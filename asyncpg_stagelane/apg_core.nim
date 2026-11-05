@@ -10,7 +10,7 @@
 ## This is core module
 
 import db_connector/postgres, std/asyncdispatch, strutils, macros, json, lists
-import byteswap, apg_array, apg_json
+import apg_array, apg_json
 
 type
   apgNotify* = object
@@ -872,7 +872,7 @@ macro exec*(conn: apgConnection|apgPool, statement: string,
 
   # if there no params, we just generate call to execAsync
   if len(params) == 0:
-    if $getTypeInst(conn).symbol == "apgConnection":
+    if getTypeInst(conn).strVal == "apgConnection":
       result = newTree(nnkStmtListExpr,
                  newCall(bindSym"execAsync", conn, statement, newLit 0,
                          newNimNode(nnkNilLit), newNimNode(nnkNilLit),
@@ -966,7 +966,7 @@ macro exec*(conn: apgConnection|apgPool, statement: string,
           getSequence(result, postNodes, param, ntp, np, valuesList,
                       lensList, typesList, formatsList)
         of ntyDistinct:
-          var name = $getTypeInst(param).symbol
+          var name = getTypeInst(param).strVal
           case name
           of "JsonB":
             result.add(newVarJson(np, param[1]))
@@ -984,7 +984,7 @@ macro exec*(conn: apgConnection|apgPool, statement: string,
           else:
             showError("Argument's type is not supported", param)
         of ntyRef:
-          var name = $getTypeInst(param).symbol
+          var name = getTypeInst(param).strVal
           if name == "JsonNode":
             if param.kind == nnkPrefix:
               var jsonCompiled = genSym(nskLet, "jsonCompiled" & $idx)
@@ -1003,7 +1003,7 @@ macro exec*(conn: apgConnection|apgPool, statement: string,
           showError("Argument's type is not supported", param)
       inc(idx)
 
-    if $getTypeInst(conn).symbol == "apgConnection":
+    if getTypeInst(conn).strVal == "apgConnection":
       result.add(
         valuesArray, typesArray, lensArray, formatsArray,
         #newEchoVar(valuesName), newEchoVar(typesName),

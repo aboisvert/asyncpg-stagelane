@@ -46,7 +46,7 @@ test-build:
       mv "${name}" "${name}_plain"
     done
     cd ..
-    nimble install .
+    nimble install
     cd tests
     for name in "${tests[@]}"; do
       nim c "${name}.nim"

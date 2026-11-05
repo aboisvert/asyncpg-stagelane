@@ -41,7 +41,7 @@ proc testTypes(conn: apgConnection) {.async.} =
     # expect: "Hello World!"
 
   block: # cstring test
-    var a = cast[cstring]("Hello C ")
+    var a: cstring = "Hello C "
     var res = await exec(conn, "SELECT $1 || $2", a, "World!")
     var value = getValue(res[0])
     close(res)
@@ -134,10 +134,10 @@ proc testTypes(conn: apgConnection) {.async.} =
 
   block: # seq[int64, uint64] test
     var a = @[2_000_000_000'i64, -2_000_000_000'i64]
-    var b = @[0xFFFFFFFFFFFFFFFE'u64, 0xFFFFFFFFFFFFFFFFE'u64]
+    var b = @[0xFFFFFFFFFFFFFFFE'u64, 0xFFFFFFFFFFFFFFFE'u64]
     var res = await exec(conn, "SELECT $1 || $2 || $3 || $4",
                          a, b, @[2_000_000_000'i64, -2_000_000_000'i64],
-                         @[0xFFFFFFFFFFFFFFFE'u64, 0xFFFFFFFFFFFFFFFFE'u64])
+                         @[0xFFFFFFFFFFFFFFFE'u64, 0xFFFFFFFFFFFFFFFE'u64])
     var value = getValue(res[0])
     close(res)
     doAssert(value == "{2000000000,-2000000000,-2,-2,2000000000,-2000000000,-2,-2}")
@@ -145,10 +145,10 @@ proc testTypes(conn: apgConnection) {.async.} =
 
   block: # array[int64, uint64] test
     var a = [2_000_000_000'i64, -2_000_000_000'i64]
-    var b = [0xFFFFFFFFFFFFFFFE'u64, 0xFFFFFFFFFFFFFFFFE'u64]
+    var b = [0xFFFFFFFFFFFFFFFE'u64, 0xFFFFFFFFFFFFFFFE'u64]
     var res = await exec(conn, "SELECT $1 || $2 || $3 || $4",
                          a, b, [2_000_000_000'i64, -2_000_000_000'i64],
-                         [0xFFFFFFFFFFFFFFFE'u64, 0xFFFFFFFFFFFFFFFFE'u64])
+                         [0xFFFFFFFFFFFFFFFE'u64, 0xFFFFFFFFFFFFFFFE'u64])
     var value = getValue(res[0])
     close(res)
     doAssert(value == "{2000000000,-2000000000,-2,-2,2000000000,-2000000000,-2,-2}")

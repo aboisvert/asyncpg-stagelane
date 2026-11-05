@@ -197,7 +197,7 @@ else:
     (cast[float32](prepare(cast[int32](x))))
   template prepare*(x: float64): float64 =
     (cast[float64](prepare(cast[int64](x))))
-  template prepare*(x: float): float =
+  template prepare*(x: float): float {.redefine.} =
     (cast[float](prepare(cast[int64](x))))
 
   template prepare*(x: bool): bool = x
