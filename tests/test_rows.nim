@@ -1,4 +1,4 @@
-import asyncdispatch, asyncpg_stagelane
+import asyncdispatch, asyncpg_stagelane, test_db
 
 proc testRows(conn: apgConnection) {.async.} =
   block: # multiple statements in one query test
@@ -17,11 +17,6 @@ proc testRows(conn: apgConnection) {.async.} =
     for item in res[0].rows():
       value = value & item[0]
     doAssert(value == "123")
-
-when defined(windows):
-  var connStr = "host=localhost port=5432 dbname=appveyor_ci_test user=postgres password=Password12!"
-else:
-  var connStr = "host=localhost port=5432 dbname=travis_ci_test user=postgres"
 
 var conn = waitFor connect(connStr)
 waitFor testRows(conn)

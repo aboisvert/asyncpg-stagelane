@@ -1,4 +1,4 @@
-import asyncdispatch, asyncpg_stagelane, json
+import asyncdispatch, asyncpg_stagelane, json, test_db
 
 proc testTypes(conn: apgConnection) {.async.} =
   block: # empty parameters test
@@ -233,11 +233,6 @@ proc testTypes(conn: apgConnection) {.async.} =
     close(res)
     doAssert(value == "John John")
     # expect "John John"
-
-when defined(windows):
-  var connStr = "host=localhost port=5432 dbname=appveyor_ci_test user=postgres password=Password12!"
-else:
-  var connStr = "host=localhost port=5432 dbname=travis_ci_test user=postgres"
 
 var conn = waitFor connect(connStr)
 waitFor testTypes(conn)

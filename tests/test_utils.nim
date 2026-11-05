@@ -1,4 +1,4 @@
-import asyncdispatch, asyncpg_stagelane, strutils
+import asyncdispatch, asyncpg_stagelane, strutils, test_db
 
 proc testEncoding(conn: apgConnection): Future[bool] {.async.} =
   result = false
@@ -71,11 +71,6 @@ proc testCopy(conn: apgConnection): Future[bool] {.async.} =
   var br = await exec(conn, "DROP TABLE foo;")
   close(br)
   result = (inString == outString)
-
-when defined(windows):
-  var connStr = "host=localhost port=5432 dbname=appveyor_ci_test user=postgres password=Password12!"
-else:
-  var connStr = "host=localhost port=5432 dbname=travis_ci_test user=postgres"
 
 var conn = waitFor connect(connStr)
 

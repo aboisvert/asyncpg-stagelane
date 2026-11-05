@@ -1,4 +1,4 @@
-import asyncdispatch, asyncpg_stagelane
+import asyncdispatch, asyncpg_stagelane, test_db
 
 const POOL_SIZE = 20
 
@@ -38,11 +38,6 @@ proc testWithConnection(pool: apgPool): Future[bool] {.async.} =
       result = false
 
 var pool = newPool(POOL_SIZE)
-
-when defined(windows):
-  var connStr = "host=localhost port=5432 dbname=appveyor_ci_test user=postgres password=Password12!"
-else:
-  var connStr = "host=localhost port=5432 dbname=travis_ci_test user=postgres"
 
 waitFor pool.connect(connStr)
 block:
