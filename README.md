@@ -1,10 +1,12 @@
 # asyncpg-stagelane
 
-Asynchronous PostgreSQL driver for Nim Language [http://www.nim-lang.org](http://nim-lang.org/)
+Asynchronous PostgreSQL driver for [Nim](http://www.nim-lang.org/).
+
+This project is a fork of [asyncpg](https://github.com/cheatfate/asyncpg) (Eugene Kabanov’s asynchronous LibPQ driver). **asyncpg-stagelane** exists to port that driver onto the [stagelane](https://github.com/ghazalialshafi/stagelane) async runtime instead of Nim’s standard `asyncdispatch` stack, while preserving the same PostgreSQL-focused API.
 
 ## Main features
 
-* Pure asynchronous implementation, based on LibPQ and Nim's async core
+* Pure asynchronous implementation, based on LibPQ
 * Support for many SQL statements/results in one request
 * Ability to send parameters separately from query, thus avoiding the need for tedious and error-prone quoting and escaping
 * Automatic type conversion for basic Nim types
