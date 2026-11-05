@@ -28,7 +28,7 @@ script:
   - tests/test_rows
   - tests/test_notifies
   - tests/test_utils
-  - nimble install asyncpg
+  - nimble install asyncpg-stagelane
   - cd tests
   - nim c test_types
   - nim c test_pool

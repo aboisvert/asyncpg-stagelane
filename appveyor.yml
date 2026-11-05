@@ -42,7 +42,7 @@ install:
   - koch boot -d:release
   - koch nimble
   - nimble update
-  - cd C:\projects\asyncpg
+  - cd C:\projects\asyncpg-stagelane
 
 build_script:
   - psql -U postgres -c "create database appveyor_ci_test;"
@@ -57,7 +57,7 @@ build_script:
   - rename test_rows.exe test_rows_plain.exe
   - rename test_notifies.exe test_notifies_plain.exe
   - rename test_utils.exe test_utils_plain.exe
-  - nimble install asyncpg
+  - nimble install asyncpg-stagelane
   - nim c test_types.nim
   - nim c test_pool.nim
   - nim c test_rows.nim

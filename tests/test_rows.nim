@@ -1,8 +1,8 @@
-import asyncdispatch, asyncpg
+import asyncdispatch, asyncpg_stagelane
 
 proc testRows(conn: apgConnection) {.async.} =
   block: # multiple statements in one query test
-    var res = await asyncpg.exec(conn, "SELECT 3;SELECT 4;SELECT 5;")
+    var res = await asyncpg_stagelane.exec(conn, "SELECT 3;SELECT 4;SELECT 5;")
     var length = len(res)
     doAssert(length == 3)
     var value1 = getValue(res[0])
@@ -12,7 +12,7 @@ proc testRows(conn: apgConnection) {.async.} =
     close(res)
 
   block: # issue #1
-    var res = await asyncpg.exec(conn, "SELECT unnest(ARRAY['1', '2', '3']);")
+    var res = await asyncpg_stagelane.exec(conn, "SELECT unnest(ARRAY['1', '2', '3']);")
     var value = ""
     for item in res[0].rows():
       value = value & item[0]

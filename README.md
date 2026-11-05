@@ -1,4 +1,4 @@
-# asyncPG [![Build Status](https://travis-ci.org/cheatfate/asyncpg.svg?branch=master)](https://travis-ci.org/cheatfate/asyncpg) [![Build status](https://ci.appveyor.com/api/projects/status/4qjvcs9q5f92an0e?svg=true)](https://ci.appveyor.com/project/cheatfate/asyncpg)
+# asyncpg-stagelane
 
 Asynchronous PostgreSQL driver for Nim Language [http://www.nim-lang.org](http://nim-lang.org/)
 
@@ -14,14 +14,16 @@ Asynchronous PostgreSQL driver for Nim Language [http://www.nim-lang.org](http:/
 
 ## Installation
 
-You can use Nim official package manager `nimble` to install `asyncpg`. The most recent version of the library can be installed via:  
+You can use Nim official package manager `nimble` to install `asyncpg-stagelane`. The most recent version of the library can be installed via:
 
 ```
-$ nimble install asyncpg
+$ nimble install asyncpg-stagelane
 ```
-or directly from Github repository
+
+To install from a local checkout of this repository:
+
 ```
-$ nimble install https://github.com/cheatfate/asyncpg.git
+$ nimble install .
 ```
 
 ## Minimal requirements
@@ -29,9 +31,13 @@ $ nimble install https://github.com/cheatfate/asyncpg.git
 - PostgreSQL 9.x (if you want to have support for JSONB types, you need PostgreSQL 9.4 at least)
 - Nim language compiler 0.14.2
 
-## Documentation
+## Usage
 
-You can find documentation in [Wiki](https://github.com/cheatfate/asyncpg/wiki).
+Import the package as `asyncpg_stagelane`:
+
+```nim
+import asyncpg_stagelane
+```
 
 ## ToDo
 

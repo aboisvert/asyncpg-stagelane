@@ -1,4 +1,4 @@
-import asyncdispatch, asyncpg
+import asyncdispatch, asyncpg_stagelane
 
 const POOL_SIZE = 20
 

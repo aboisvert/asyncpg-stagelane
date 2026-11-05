@@ -1,8 +1,8 @@
-import asyncdispatch, asyncpg, json
+import asyncdispatch, asyncpg_stagelane, json
 
 proc testTypes(conn: apgConnection) {.async.} =
   block: # empty parameters test
-    var res = await asyncpg.exec(conn, "SELECT 3;")
+    var res = await asyncpg_stagelane.exec(conn, "SELECT 3;")
     var value = getValue(res[0])
     close(res)
     doAssert(value == "3")

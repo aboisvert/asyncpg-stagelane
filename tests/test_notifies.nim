@@ -1,4 +1,4 @@
-import asyncdispatch, asyncpg
+import asyncdispatch, asyncpg_stagelane
 
 proc testConnectionNotify(conn: apgConnection): Future[bool] {.async.} =
   var r1 = false

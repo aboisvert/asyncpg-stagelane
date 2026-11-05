@@ -1,4 +1,4 @@
-import asyncdispatch, asyncpg, strutils
+import asyncdispatch, asyncpg_stagelane, strutils
 
 proc testEncoding(conn: apgConnection): Future[bool] {.async.} =
   result = false

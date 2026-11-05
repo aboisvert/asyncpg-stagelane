@@ -57,14 +57,14 @@ proc pqserverVersion(conn: PPGconn): cint
      {.cdecl, dynlib: dllname, importc: "PQserverVersion".}
 
 proc getFreeConnection(pool: apgPool): Future[int] =
-  var retFuture = newFuture[int]("asyncpg.getFreeConnection")
+  var retFuture = newFuture[int]("asyncpg_stagelane.getFreeConnection")
   proc cb() =
     if not retFuture.finished:
       var index = 0
       while index < len(pool.futures):
         let fut = pool.futures[index]
         if fut == nil or fut.finished:
-          var replaceFuture = newFuture[void]("asyncpg.pool." & $index)
+          var replaceFuture = newFuture[void]("asyncpg_stagelane.pool." & $index)
           pool.futures[index] = replaceFuture
           retFuture.complete(index)
           break
@@ -79,12 +79,12 @@ proc getFreeConnection(pool: apgPool): Future[int] =
   return retFuture
 
 # proc getIndexConnection(pool: apgPool, index: int): Future[int] =
-#   var retFuture = newFuture[int]("asyncpg.getIndexConnection")
+#   var retFuture = newFuture[int]("asyncpg_stagelane.getIndexConnection")
 #   proc cb() =
 #     if not retFuture.finished:
 #       let fut = pool.futures[index]
 #       if fut == nil or fut.finished:
-#         var replaceFuture = newFuture[void]("asyncpg.pool." & $index)
+#         var replaceFuture = newFuture[void]("asyncpg_stagelane.pool." & $index)
 #         pool.futures[index] = replaceFuture
 #         retFuture.complete(index)
 #   cb()
@@ -106,7 +106,7 @@ proc noticeReceiver*(arg: pointer, res: PPGresult) {.cdecl.} =
 proc connect*(connection: string): Future[apgConnection] =
   ## Establish connection to PostgreSQL database using ``connection`` string.
 
-  var retFuture = newFuture[apgConnection]("asyncpg.connect")
+  var retFuture = newFuture[apgConnection]("asyncpg_stagelane.connect")
   var conn = apgConnection()
 
   proc cb(fd: AsyncFD): bool {.closure,gcsafe.} =
@@ -148,7 +148,7 @@ proc connect*(connection: string): Future[apgConnection] =
 proc reset*(conn: apgConnection): Future[void] =
   ## Resets PostgreSQL database connection ``conn``.
 
-  var retFuture = newFuture[void]("asyncpg.reset")
+  var retFuture = newFuture[void]("asyncpg_stagelane.reset")
 
   proc cb(fd: AsyncFD): bool {.closure,gcsafe.} =
     if not retFuture.finished:
@@ -243,7 +243,7 @@ proc copyTo*(conn: apgConnection, buffer: pointer,
   ## this function. After all data have been sent, you need to finish sending
   ## process with call ``copyTo(conn, nil, 0)``.
   ## Function returns apgResult.
-  var retFuture = newFuture[apgResult]("asyncpg.copyTo")
+  var retFuture = newFuture[apgResult]("asyncpg_stagelane.copyTo")
   var apgres = apgResult()
   apgres.pgress = newSeq[PPGresult]()
   var state = 0
@@ -336,7 +336,7 @@ proc copyFromInto*(conn: apgConnection, buffer: pointer,
   ## Be sure to execute `COPY TO` statement, before you call this
   ## function.
 
-  var retFuture = newFuture[int]("asyncpg.copyFrom")
+  var retFuture = newFuture[int]("asyncpg_stagelane.copyFrom")
   var apgres = apgResult()
   apgres.pgress = newSeq[PPGresult]()
   var state = 0
@@ -401,7 +401,7 @@ template withConnection*(pool: apgPool, conn, body: untyped) =
 proc execAsync(conn: apgConnection, statement: string, pN: int32, pT: POid,
                pV: cstringArray, pL, pF: ptr int32,
                rF: int32, notify = true): Future[apgResult] =
-  var retFuture = newFuture[apgResult]("asyncpg.exec")
+  var retFuture = newFuture[apgResult]("asyncpg_stagelane.exec")
   var apgres = apgResult()
   apgres.pgress = newSeq[PPGresult]()
   var state = 0
@@ -1116,7 +1116,7 @@ proc notify*(conn: apgConnection|apgPool, channel: string): Future[apgNotify] =
 
   var cell = apgNotifyCell()
   cell.notify.channel = channel
-  cell.future = newFuture[apgNotify]("asyncpg.notify")
+  cell.future = newFuture[apgNotify]("asyncpg_stagelane.notify")
   conn.notifies.append(cell)
   return cell.future
 
