@@ -159,11 +159,17 @@ proc checkout*(pool: apgPool): int {.flow.} =
     while i < pool.connections.len:
       if not pool.busy[i]:
         pool.busy[i] = true
-        if pool.connections[i] == nil or pool.connections[i].pgconn == nil:
-          if pool.connStr.len == 0:
-            raise newException(ValueError, "pool has no connection string; call connect(pool, ...) first")
-          pool.connections[i] = connect(pool.connStr)
-        return i
+        try:
+          if pool.connections[i] == nil or pool.connections[i].pgconn == nil:
+            if pool.connStr.len == 0:
+              raise newException(ValueError,
+                "pool has no connection string; call connect(pool, ...) first")
+            pool.connections[i] = connect(pool.connStr)
+          return i
+        except CatchableError:
+          pool.busy[i] = false
+          notifyOne(pool.waitq)
+          raise
       inc i
     park(pool.waitq)
 
@@ -203,16 +209,18 @@ proc processPendingNotifications(conn: apgConnection, connNotify: bool) =
       break
     let channel = $(nres.relname)
     if connNotify:
-      var matched = false
-      for node in conn.notifies.nodes():
-        let w = node.value.wait
+      ## Deliver the same NOTIFY to every registered waiter on this channel
+      ## (each waiter has its own slot).
+      var cnode = conn.notifies.head
+      while cnode != nil:
+        let cnext = cnode.next
+        let w = cnode.value.wait
         if w != nil and w.channel == channel:
           fillNotifyFromPg(w.ntf, channel, nres)
           w.arrived = true
           notifyOne(w.q)
-          conn.notifies.remove(node)
-          matched = true
-          break
+          conn.notifies.remove(cnode)
+        cnode = cnext
     else:
       var cell = apgNotifyCell()
       cell.data = apgNotify()

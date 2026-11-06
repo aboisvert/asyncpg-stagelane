@@ -42,7 +42,7 @@ psql: _postgres-ready
 deps:
     atlas install
 
-# Compile all integration tests (Appveyor build_script; Unix paths).
+# Compile all integration tests.
 # Uses `nim c` so nim.cfg's Atlas paths win over Nimble's global package dir.
 test-build: deps
     #!/usr/bin/env bash
@@ -52,7 +52,7 @@ test-build: deps
       nim c "$test"
     done
 
-# Run all integration test binaries (Appveyor test_script; Unix paths).
+# Run all integration test binaries.
 # On macOS, libpq from Homebrew is keg-only. Honor DYLD_FALLBACK_LIBRARY_PATH
 # when the developer set it; otherwise add "$(brew --prefix libpq)/lib".
 test-run:
@@ -65,7 +65,7 @@ test-run:
         *) export DYLD_FALLBACK_LIBRARY_PATH="${libpq_lib}${DYLD_FALLBACK_LIBRARY_PATH:+:$DYLD_FALLBACK_LIBRARY_PATH}" ;;
       esac
     fi
-    tests=(test_types test_pool test_rows test_notifies test_utils)
+    tests=(test_types test_pool test_rows test_notifies test_utils test_torture)
     for name in "${tests[@]}"; do
       "tests/${name}"
     done
