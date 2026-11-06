@@ -20,7 +20,7 @@ Current requirements:
 requires "nim >= 2.2.0"
 requires "db_connector"
 requires "malebolgia >= 1.3.2"
-requires "https://github.com/ghazalialshafi/stagelane#head"
+requires "https://github.com/ghazalialshafi/stagelane#f72f1ea1cc603d6e00704988c18e496237617ac5"
 ```
 
 `nim >= 2.2.0` is the Nimble spelling of the Nim 2.2+ requirement. Atlas checks it and does not clone a compiler. `db_connector` is a name in the Nimble package index, which Atlas maps to `https://github.com/nim-lang/db_connector`. `malebolgia` is also index-hosted (`https://github.com/Araq/malebolgia`). `stagelane` is absent from that index (`nimble search stagelane` finds nothing), so the requirement has to be a git URL.
@@ -37,39 +37,29 @@ atlas deps             # show the selected graph
 
 `just deps` is `atlas install`. `just test-build` depends on it, then compiles with `nim c`.
 
-`atlas install` re-solves. A `#head` requirement moves when upstream `main` moves. `atlas rep` checks out the commits stored in `atlas.lock` and rewrites `nim.cfg` from the lock. It also rewrites `asyncpg_stagelane.nimble` from the copy stored in the lock, so pin again after editing the nimble file and before relying on `atlas rep`.
+`atlas install` re-solves. The stagelane requirement names one commit, so a newer `main` does not move the checkout. `atlas rep` checks out the commits stored in `atlas.lock` and rewrites `nim.cfg` from the lock. It also rewrites `asyncpg_stagelane.nimble` from the copy stored in the lock, so pin again after editing the nimble file and before relying on `atlas rep`.
 
 `atlas update` by itself only fetches refs. It prints a reminder to run `atlas install`.
 
-## Why stagelane is `#head`
+## Stagelane is pinned to v0.2
 
-A URL with no ref, `requires "https://github.com/ghazalialshafi/stagelane"`, did not select `main`.
+Upstream's README calls commit `f72f1ea1cc603d6e00704988c18e496237617ac5` Version 0.2. That commit is not tagged, and `stagelane.nimble` still says `version = "0.1.0"`. Atlas turns versions into commits by reading tags, then by scanning nimble-file history. A requirement such as `>= 0.2.0` therefore matches nothing. A URL with no ref, `requires "https://github.com/ghazalialshafi/stagelane"`, also fails to select this commit: every commit after the `0.1.0` bump compares equal to `0.1.0` (build metadata does not participate in SemVer precedence), and the solver keeps the oldest, `4d7ed5d0`.
 
-Stagelane publishes no git tags, and every commit's nimble file still says `version = "0.1.0"`. Atlas turns versions into commits by reading tags, then by scanning nimble-file history. Commits after a version bump show up as SemVer build metadata, for example `0.1.0+10@f72f1ea1` (ten commits after the `0.1.0` bump, short hash `f72f1ea1`). Build metadata does not participate in SemVer precedence, so every one of those commits compares equal to `0.1.0`. The solver then kept the oldest such commit, `4d7ed5d0` ("Upload from colab"), and the build would have compiled against that tree.
-
-`#head` is a special version that matches the repository tip. The requirement parser treats `#`, `<`, `=`, `>`, `^`, `~`, and `[` as the start of a version, so the form that works is:
+`#` followed by a commit hash is an exact pin. The requirement parser treats `#`, `<`, `=`, `>`, `^`, `~`, and `[` as the start of a version, so the form that works is:
 
 ```nim
-requires "https://github.com/ghazalialshafi/stagelane#head"
+requires "https://github.com/ghazalialshafi/stagelane#f72f1ea1cc603d6e00704988c18e496237617ac5"
 ```
 
-The Nimble CLI spelling `url@#head` is rejected. Atlas treats `@` as part of the package name, and a name whose path ends in `@` is an invalid requirement.
+The Nimble CLI spelling `url@#hash` is rejected. Atlas treats `@` as part of the package name, and a name whose path ends in `@` is an invalid requirement.
 
-With `#head` in place, `atlas install` reported both candidates and selected the tip (the trailing `^` marks a `#head` selection):
-
-```text
-[x] (db_connector, 0.1.0@c77cffdf)
-[ ] (stagelane, 0.1.0@4d7ed5d0)
-[x] (stagelane, 0.1.0+10@f72f1ea1^)
-```
-
-`atlas.lock` records the full hashes (`c77cffdf…` and `f72f1ea1…`). Those hashes go stale on purpose: the lock is the reproducible snapshot, `#head` is the floating request.
+`atlas install` checks out that commit. `atlas.lock` records the same hash. Moving to a later stagelane release means editing this requirement, then running `atlas install` and `atlas pin`.
 
 ## Adding or replacing a git dependency
 
 `atlas use <url>` initializes an Atlas project if needed, appends a `requires` line, clones, and regenerates `nim.cfg`.
 
-It skips the nimble edit when it thinks the package is already required. The check is by short name, project name, and URL project name. An existing `requires "stagelane >= 0.1.0"` therefore counts as "already up to date", and `atlas use` will not replace that line with the git URL. Delete the name-based line first, then `atlas use https://github.com/ghazalialshafi/stagelane`, then add `#head` if the repo is untagged and its nimble version never changes.
+It skips the nimble edit when it thinks the package is already required. The check is by short name, project name, and URL project name. An existing `requires "stagelane >= 0.1.0"` therefore counts as "already up to date", and `atlas use` will not replace that line with the git URL. Delete the name-based line first, then `atlas use https://github.com/ghazalialshafi/stagelane`, then replace the appended line with the pinned commit if the repo is untagged.
 
 After the first `use`, edit the nimble file and run `atlas install` rather than `use` again.
 
@@ -104,4 +94,4 @@ switch("path", "$projectDir/../")
 
 `deps/*` are full git clones (and Atlas also keeps `deps/.cache`, `deps/_packages`, and sometimes `deps/.tmp`). Adding `deps/stagelane` to this repo would record a gitlink. `.gitignore` ignores all of `deps/`.
 
-Commit `nim.cfg`, `atlas.lock`, and the `requires` lines. A fresh clone restores the tree with `atlas install` (follow `#head`) or `atlas rep` (the lock). `deps/atlas.config` is inside the ignored directory; the next Atlas command recreates it.
+Commit `nim.cfg`, `atlas.lock`, and the `requires` lines. A fresh clone restores the tree with `atlas install` or `atlas rep`. `deps/atlas.config` is inside the ignored directory; the next Atlas command recreates it.

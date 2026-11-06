@@ -30,13 +30,13 @@ $ brew install libpq
 $ sudo apt-get install libpq libpq-dev pkg-config
 ```
 
-Requires Nim 2.2+. Dependencies are vendored with [Atlas](https://github.com/nim-lang/atlas) into `deps/`. [stagelane](https://github.com/ghazalialshafi/stagelane) is not on the Nimble package index; this repo requires its git tip (`#head`). `atlas.lock` records the commits last resolved.
+Requires Nim 2.2+. Dependencies are vendored with [Atlas](https://github.com/nim-lang/atlas) into `deps/`. [stagelane](https://github.com/ghazalialshafi/stagelane) is not on the Nimble package index. This repo pins stagelane v0.2 by commit (`f72f1ea1`), because that release has no git tag and its nimble file still says `0.1.0`. `atlas.lock` records the same commit.
 
 ```
 $ atlas install
 ```
 
-`atlas rep` checks out the commits in `atlas.lock` instead of resolving `#head` again.
+`atlas rep` checks out the commits in `atlas.lock`.
 
 ## Minimal requirements
 
