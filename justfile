@@ -33,25 +33,19 @@ db-refresh:
     @just postgres-stop
     @just postgres-start
 
+# Open an interactive psql session on the test database.
+# Connect inside the container so a local Postgres on port 5432 is not used.
+psql: _postgres-ready
+    docker exec -it "{{container_name}}" psql -U "{{postgres_user}}" -d "{{postgres_db}}"
+
 # Compile all integration tests (Appveyor build_script; Unix paths).
 test-build:
     #!/usr/bin/env bash
     set -euo pipefail
-    tests=(test_types test_pool test_rows test_notifies test_utils)
-    for name in "${tests[@]}"; do
-      nimble c --path:"." "tests/${name}.nim"
+    tests=$(ls tests/*.nim | sed 's/\.nim//g')
+    for test in $tests; do
+      nimble c --path:"." $test
     done
-    cd tests
-    for name in "${tests[@]}"; do
-      mv "${name}" "${name}_plain"
-    done
-    cd ..
-    nimble install
-    cd tests
-    for name in "${tests[@]}"; do
-      nim c "${name}.nim"
-    done
-    cd ..
 
 # Run all integration test binaries (Appveyor test_script; Unix paths).
 # On macOS, libpq from Homebrew is keg-only. Honor DYLD_FALLBACK_LIBRARY_PATH
@@ -78,23 +72,19 @@ test: _postgres-ready test-build test-run
 [private]
 _postgres-ready:
     #!/usr/bin/env bash
-    set -euox pipefail
+    set -euo pipefail
     if docker ps --format '{{{{.Names}}' | grep -qx "{{container_name}}"; then
       echo "{{container_name}} is already running"
     elif docker ps -a --format '{{{{.Names}}' | grep -qx "{{container_name}}"; then
       docker build -t "{{image_name}}" -f "{{dockerfile}}" docker/postgres
       docker start "{{container_name}}"
     else
-      docker run -d --name "{{container_name}}"
+      docker build -t "{{image_name}}" -f "{{dockerfile}}" docker/postgres
+      docker run -d --name "{{container_name}}" -p "{{postgres_port}}:5432" "{{image_name}}"
     fi
     echo "Waiting for PostgreSQL..."
     for _ in $(seq 1 60); do
-      if command -v pg_isready >/dev/null 2>&1; then
-        if PGPASSWORD="{{postgres_password}}" pg_isready -h localhost -p "{{postgres_port}}" -U "{{postgres_user}}" -d "{{postgres_db}}" >/dev/null 2>&1; then
-          echo "PostgreSQL is ready"
-          exit 0
-        fi
-      elif docker exec "{{container_name}}" pg_isready -U "{{postgres_user}}" -d "{{postgres_db}}" >/dev/null 2>&1; then
+      if docker exec "{{container_name}}" pg_isready -U "{{postgres_user}}" -d "{{postgres_db}}" >/dev/null 2>&1; then
         echo "PostgreSQL is ready"
         exit 0
       fi
@@ -107,9 +97,5 @@ _postgres-ready:
 _psql-exec sql:
     #!/usr/bin/env bash
     set -euo pipefail
-    if command -v psql >/dev/null 2>&1; then
-      PGPASSWORD="{{postgres_password}}" psql -h localhost -p "{{postgres_port}}" -U "{{postgres_user}}" -d postgres -v ON_ERROR_STOP=1 -c "{{sql}}"
-    else
-      docker exec -e PGPASSWORD="{{postgres_password}}" "{{container_name}}" \
-        psql -U "{{postgres_user}}" -d postgres -v ON_ERROR_STOP=1 -c "{{sql}}"
-    fi
+    docker exec "{{container_name}}" \
+      psql -U "{{postgres_user}}" -d postgres -v ON_ERROR_STOP=1 -c "{{sql}}"

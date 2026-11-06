@@ -46,7 +46,7 @@ $ nimble install .
 
 - LibPQ (see Installation)
 - PostgreSQL 9.x (if you want to have support for JSONB types, you need PostgreSQL 9.4 at least)
-- Nim language compiler 0.14.2
+- Nim language compiler 2.2+
 
 ## Integration tests
 
@@ -83,6 +83,7 @@ Other helpers:
 | `just postgres-stop` | Stop and remove the container |
 | `just db-wipe` | Drop and recreate the `asyncpg` database (Postgres keeps running) |
 | `just db-refresh` | Remove the container and start a fresh instance |
+| `just psql` | Open an interactive `psql` session on the `asyncpg` database |
 
 If port 5432 is already in use on your machine, stop the other service or change `postgres_port` in the [`justfile`](justfile).
 

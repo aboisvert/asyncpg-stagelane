@@ -1,3 +1,8 @@
 nimble.develop
 nimble.paths
 nimbledeps
+
+# ignore files with no extension under the tests directory
+!tests/**/*.*
+tests/**/*
+
