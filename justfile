@@ -54,9 +54,18 @@ test-build:
     cd ..
 
 # Run all integration test binaries (Appveyor test_script; Unix paths).
+# On macOS, libpq from Homebrew is keg-only. Honor DYLD_FALLBACK_LIBRARY_PATH
+# when the developer set it; otherwise add "$(brew --prefix libpq)/lib".
 test-run:
     #!/usr/bin/env bash
     set -euo pipefail
+    if [[ "$(uname -s)" == Darwin ]] && command -v brew >/dev/null 2>&1; then
+      libpq_lib="$(brew --prefix libpq)/lib"
+      case ":${DYLD_FALLBACK_LIBRARY_PATH:-}:" in
+        *":${libpq_lib}:"*) ;;
+        *) export DYLD_FALLBACK_LIBRARY_PATH="${libpq_lib}${DYLD_FALLBACK_LIBRARY_PATH:+:$DYLD_FALLBACK_LIBRARY_PATH}" ;;
+      esac
+    fi
     tests=(test_types test_pool test_rows test_notifies test_utils)
     for name in "${tests[@]}"; do
       "tests/${name}_plain"

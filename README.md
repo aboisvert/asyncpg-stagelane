@@ -16,6 +16,20 @@ This project is a fork of [asyncpg](https://github.com/cheatfate/asyncpg) (Eugen
 
 ## Installation
 
+Install LibPQ first:
+
+**macOS**
+
+```
+$ brew install libpq
+```
+
+**Linux (Debian)**
+
+```
+$ sudo apt-get install libpq libpq-dev pkg-config
+```
+
 You can use Nim official package manager `nimble` to install `asyncpg-stagelane`. The most recent version of the library can be installed via:
 
 ```
@@ -30,6 +44,7 @@ $ nimble install .
 
 ## Minimal requirements
 
+- LibPQ (see Installation)
 - PostgreSQL 9.x (if you want to have support for JSONB types, you need PostgreSQL 9.4 at least)
 - Nim language compiler 0.14.2
 

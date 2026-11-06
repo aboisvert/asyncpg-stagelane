@@ -45,6 +45,8 @@ type
 when defined(windows):
   const dllName = "libpq.dll"
 elif defined(macosx):
+  # Homebrew's libpq is keg-only. Point dyld at it before launch, for example:
+  #   export DYLD_FALLBACK_LIBRARY_PATH="$(brew --prefix libpq)/lib"
   const dllName = "libpq.dylib"
 else:
   const dllName = "libpq.so(.5|)"
