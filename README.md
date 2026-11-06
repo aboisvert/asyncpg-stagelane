@@ -45,7 +45,7 @@ $ atlas install
 - Nim 2.2+ (`requires "nim >= 2.2.0"`)
 - [stagelane](https://github.com/ghazalialshafi/stagelane), vendored by Atlas from its git repository (`atlas install`)
 
-This driver uses stagelane’s POSIX event loop (`waitReadable` / `waitWritable` on the libpq socket). Use each connection or pool only on the thread whose stagelane scheduler is driving I/O.
+This driver uses stagelane’s POSIX event loop (`waitReadable` / `waitWritable` on the libpq socket). Each connection, pool, and task stays on the thread that created it; see [Threads](#threads).
 
 ## Integration tests
 
@@ -130,6 +130,42 @@ proc waitOnce(conn: apgConnection) {.flow.} =
   discard waitFor(go waitNotify(w), 100)
   unlistenNotify(conn, "ch")
 ```
+
+## Threads
+
+Many OS threads can use the driver at once. Each thread owns the objects it creates. `apgPool` keeps its slot flags, wait queue, and notify list without locks, and libpq allows only one thread to use a given `PGconn` at a time. The stagelane scheduler is thread-local: `run` drives that thread’s event loop, and a socket wait is registered only on that loop.
+
+Keep all of these on the thread that created them, and close connections and pools before that thread returns:
+
+* `apgConnection` and `apgPool`, including every connection stored in the pool
+* `apgResult`
+* `NotifyWait`
+* stagelane `Task` handles (`await`, `waitDone`, `waitFor`)
+
+This driver leaves `-d:flowThreads` unused: it never posts a connection, pool, or task to another scheduler.
+
+Pass a connection string into the worker and open the pool inside `run`. `run` is not `{.gcsafe.}`, so a spawn proc (`createThread`, malebolgia, and similar) needs a narrow cast around that call:
+
+```nim
+proc work(connStr: string) {.flow.} =
+  let pool = newPool(4)
+  connect(pool, connStr)
+  defer: close(pool)
+  var res = exec(pool, "SELECT 1;")
+  defer: close(res)
+
+proc worker(connStr: string) {.gcsafe.} =
+  {.cast(gcsafe).}:
+    run work(connStr)
+```
+
+Nim strings, integers, and other values already copied out of a result (`getValue`, `getRow`) are ordinary data and can move to another thread. Share database state through SQL. A counter updated from several threads belongs in a transaction (`BEGIN` / `UPDATE` / `COMMIT`) on each thread’s own pool. For NOTIFY across threads, give each side its own connection: the listener must `listenNotify` before the others `sendNotify`, because PostgreSQL drops a notification for a session that is not yet listening.
+
+Each thread has its own timer wheel, so `waitFor` only sees that thread. Under load from many OS threads it can time out while the task is still running. Use `waitDone` when the task has to finish, and put the wall-clock cap on the thread pool (malebolgia’s `createMaster` timeout, for example).
+
+On one thread, a connection runs one libpq operation at a time. A second `exec`, `reset`, `copyTo`, or `copyFromInto` on the same `apgConnection` while another is suspended is undefined: the scheduler accepts one reader and one writer per socket, and libpq will not run two commands on one connection. Overlap queries through the pool. `exec` on a pool and `withConnection` each check out one slot, and several `go` tasks may share that pool, up to its size. Finish those tasks before `close`. A connection taken with `withConnection` stays inside that block.
+
+`notify` / `waitNotify` park on that same thread. Payloads are read only while the listening connection is inside `exec` or COPY, so a waiter makes progress only when that connection is running an operation. `listenNotify` on a pool issues `LISTEN` on the one connection it checks out, so the other slots in the pool are not listening.
 
 ## ToDo
 
