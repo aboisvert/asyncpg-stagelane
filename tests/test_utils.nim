@@ -1,4 +1,4 @@
-import stagelane, asyncpg_stagelane, strutils, test_db
+import stagelane, asyncpg_stagelane, test_db
 
 proc testEncoding(conn: apgConnection): bool {.flow.} =
   result = false
