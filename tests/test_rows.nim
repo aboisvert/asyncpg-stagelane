@@ -1,8 +1,8 @@
-import asyncdispatch, asyncpg_stagelane, test_db
+import stagelane, asyncpg_stagelane, test_db
 
-proc testRows(conn: apgConnection) {.async.} =
+proc testRows(conn: apgConnection) {.flow.} =
   block: # multiple statements in one query test
-    var res = await asyncpg_stagelane.exec(conn, "SELECT 3;SELECT 4;SELECT 5;")
+    var res = asyncpg_stagelane.exec(conn, "SELECT 3;SELECT 4;SELECT 5;")
     var length = len(res)
     doAssert(length == 3)
     var value1 = getValue(res[0])
@@ -12,12 +12,12 @@ proc testRows(conn: apgConnection) {.async.} =
     close(res)
 
   block: # issue #1
-    var res = await asyncpg_stagelane.exec(conn, "SELECT unnest(ARRAY['1', '2', '3']);")
+    var res = asyncpg_stagelane.exec(conn, "SELECT unnest(ARRAY['1', '2', '3']);")
     var value = ""
     for item in res[0].rows():
       value = value & item[0]
     doAssert(value == "123")
 
-var conn = waitFor connect(connStr)
-waitFor testRows(conn)
+var conn = run connect(connStr)
+run testRows(conn)
 close(conn)

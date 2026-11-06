@@ -1,8 +1,8 @@
-import asyncdispatch, asyncpg_stagelane, json, test_db
+import stagelane, asyncpg_stagelane, json, test_db
 
-proc testTypes(conn: apgConnection) {.async.} =
+proc testTypes(conn: apgConnection) {.flow.} =
   block: # empty parameters test
-    var res = await asyncpg_stagelane.exec(conn, "SELECT 3;")
+    var res = asyncpg_stagelane.exec(conn, "SELECT 3;")
     var value = getValue(res[0])
     close(res)
     doAssert(value == "3")
@@ -10,7 +10,7 @@ proc testTypes(conn: apgConnection) {.async.} =
 
   block: # char type test
     var a = 0x30'u8
-    var res = await exec(conn, "SELECT $1::text || $2::text", a, 0x31'u8)
+    var res = exec(conn, "SELECT $1::text || $2::text", a, 0x31'u8)
     var value = getValue(res[0])
     close(res)
     doAssert(value == "01")
@@ -18,7 +18,7 @@ proc testTypes(conn: apgConnection) {.async.} =
 
   block: # integer type test
     var a = 0x30'i16
-    var res = await exec(conn, "SELECT $1 + $2", a, 0x31'i16)
+    var res = exec(conn, "SELECT $1 + $2", a, 0x31'i16)
     var value = getValue(res[0])
     close(res)
     doAssert(value == "97")
@@ -26,7 +26,7 @@ proc testTypes(conn: apgConnection) {.async.} =
 
   block: # boolean test
     var a = false
-    var res = await exec(conn, "SELECT $1 OR $2", a, true)
+    var res = exec(conn, "SELECT $1 OR $2", a, true)
     var value = getValue(res[0])
     close(res)
     doAssert(value == "t")
@@ -34,7 +34,7 @@ proc testTypes(conn: apgConnection) {.async.} =
 
   block: # string test
     var a = "Hello "
-    var res = await exec(conn, "SELECT $1 || $2", a, "World!")
+    var res = exec(conn, "SELECT $1 || $2", a, "World!")
     var value = getValue(res[0])
     close(res)
     doAssert(value == "Hello World!")
@@ -42,7 +42,7 @@ proc testTypes(conn: apgConnection) {.async.} =
 
   block: # cstring test
     var a: cstring = "Hello C "
-    var res = await exec(conn, "SELECT $1 || $2", a, "World!")
+    var res = exec(conn, "SELECT $1 || $2", a, "World!")
     var value = getValue(res[0])
     close(res)
     doAssert(value == "Hello C World!")
@@ -50,7 +50,7 @@ proc testTypes(conn: apgConnection) {.async.} =
 
   block: # seq[bool] test
     var a = @[false, false]
-    var res = await exec(conn, "SELECT $1 || $2", a, @[true, true])
+    var res = exec(conn, "SELECT $1 || $2", a, @[true, true])
     var value = getValue(res[0])
     close(res)
     doAssert(value == "{f,f,t,t}")
@@ -58,7 +58,7 @@ proc testTypes(conn: apgConnection) {.async.} =
 
   block: # array[bool] test
     var a = [false, false]
-    var res = await exec(conn, "SELECT $1 || $2", a, [true, true])
+    var res = exec(conn, "SELECT $1 || $2", a, [true, true])
     var value = getValue(res[0])
     close(res)
     doAssert(value == "{f,f,t,t}")
@@ -68,7 +68,7 @@ proc testTypes(conn: apgConnection) {.async.} =
     var a = @['0', '1']
     var b = @[0x32'i8, 0x33'i8]
     var c = @[0x34'u8, 0x35'u8]
-    var res = await exec(conn, "SELECT $1 || $2 || $3 || $4 || $5 || $6",
+    var res = exec(conn, "SELECT $1 || $2 || $3 || $4 || $5 || $6",
                          a, b, c, @['6', '7'], @[0x38'i8, 0x39'i8],
                          @[0x30'u8, 0x30'u8])
     var value = getValue(res[0])
@@ -80,7 +80,7 @@ proc testTypes(conn: apgConnection) {.async.} =
     var a = ['0', '1']
     var b = [0x32'i8, 0x33'i8]
     var c = [0x34'u8, 0x35'u8]
-    var res = await exec(conn, "SELECT $1 || $2 || $3 || $4 || $5 || $6",
+    var res = exec(conn, "SELECT $1 || $2 || $3 || $4 || $5 || $6",
                          a, b, c, ['6', '7'], [0x38'i8, 0x39'i8],
                          [0x30'u8, 0x30'u8])
     var value = getValue(res[0])
@@ -91,7 +91,7 @@ proc testTypes(conn: apgConnection) {.async.} =
   block: # seq[int16, uint16] test
     var a = @[30000'i16, -30000'i16]
     var b = @[0xFFFF'u16, 0xFFFF'u16]
-    var res = await exec(conn, "SELECT $1 || $2 || $3 || $4",
+    var res = exec(conn, "SELECT $1 || $2 || $3 || $4",
                          a, b, @[30000'i16, -30000'i16],
                          @[0xFFFF'u16, 0xFFFF'u16])
     var value = getValue(res[0])
@@ -102,7 +102,7 @@ proc testTypes(conn: apgConnection) {.async.} =
   block: # array[int16, uint16] test
     var a = [30000'i16, -30000'i16]
     var b = [0xFFFF'u16, 0xFFFF'u16]
-    var res = await exec(conn, "SELECT $1 || $2 || $3 || $4",
+    var res = exec(conn, "SELECT $1 || $2 || $3 || $4",
                          a, b, [30000'i16, -30000'i16],
                          [0xFFFF'u16, 0xFFFF'u16])
     var value = getValue(res[0])
@@ -113,7 +113,7 @@ proc testTypes(conn: apgConnection) {.async.} =
   block: # seq[int32, uint32] test
     var a = @[100000'i32, -100000'i32]
     var b = @[0xFFFFFFFE'u32, 0xFFFFFFFE'u32]
-    var res = await exec(conn, "SELECT $1 || $2 || $3 || $4",
+    var res = exec(conn, "SELECT $1 || $2 || $3 || $4",
                          a, b, @[100000'i32, -100000'i32],
                          @[0xFFFFFFFE'u32, 0xFFFFFFFE'u32])
     var value = getValue(res[0])
@@ -124,7 +124,7 @@ proc testTypes(conn: apgConnection) {.async.} =
   block: # seq[int32, uint32] test
     var a = [100000'i32, -100000'i32]
     var b = [0xFFFFFFFE'u32, 0xFFFFFFFE'u32]
-    var res = await exec(conn, "SELECT $1 || $2 || $3 || $4",
+    var res = exec(conn, "SELECT $1 || $2 || $3 || $4",
                          a, b, [100000'i32, -100000'i32],
                          [0xFFFFFFFE'u32, 0xFFFFFFFE'u32])
     var value = getValue(res[0])
@@ -135,7 +135,7 @@ proc testTypes(conn: apgConnection) {.async.} =
   block: # seq[int64, uint64] test
     var a = @[2_000_000_000'i64, -2_000_000_000'i64]
     var b = @[0xFFFFFFFFFFFFFFFE'u64, 0xFFFFFFFFFFFFFFFE'u64]
-    var res = await exec(conn, "SELECT $1 || $2 || $3 || $4",
+    var res = exec(conn, "SELECT $1 || $2 || $3 || $4",
                          a, b, @[2_000_000_000'i64, -2_000_000_000'i64],
                          @[0xFFFFFFFFFFFFFFFE'u64, 0xFFFFFFFFFFFFFFFE'u64])
     var value = getValue(res[0])
@@ -146,7 +146,7 @@ proc testTypes(conn: apgConnection) {.async.} =
   block: # array[int64, uint64] test
     var a = [2_000_000_000'i64, -2_000_000_000'i64]
     var b = [0xFFFFFFFFFFFFFFFE'u64, 0xFFFFFFFFFFFFFFFE'u64]
-    var res = await exec(conn, "SELECT $1 || $2 || $3 || $4",
+    var res = exec(conn, "SELECT $1 || $2 || $3 || $4",
                          a, b, [2_000_000_000'i64, -2_000_000_000'i64],
                          [0xFFFFFFFFFFFFFFFE'u64, 0xFFFFFFFFFFFFFFFE'u64])
     var value = getValue(res[0])
@@ -157,7 +157,7 @@ proc testTypes(conn: apgConnection) {.async.} =
   block: # seq[float32] test
     var a = @[1.2'f32, 3.4'f32]
     var b = @[5.6'f32, 7.8'f32]
-    var res = await exec(conn, "SELECT $1 || $2 || $3 || $4",
+    var res = exec(conn, "SELECT $1 || $2 || $3 || $4",
                          a, b, @[9.10'f32, 11.12'f32],
                          @[13.14'f32, 15.16'f32])
     var value = getValue(res[0])
@@ -168,7 +168,7 @@ proc testTypes(conn: apgConnection) {.async.} =
   block: # array[float32] test
     var a = [1.2'f32, 3.4'f32]
     var b = [5.6'f32, 7.8'f32]
-    var res = await exec(conn, "SELECT $1 || $2 || $3 || $4",
+    var res = exec(conn, "SELECT $1 || $2 || $3 || $4",
                          a, b, [9.10'f32, 11.12'f32],
                          [13.14'f32, 15.16'f32])
     var value = getValue(res[0])
@@ -179,7 +179,7 @@ proc testTypes(conn: apgConnection) {.async.} =
   block: # seq[float] test
     var a = @[1.01, 2.02]
     var b = @[3.03, 4.04]
-    var res = await exec(conn, "SELECT $1 || $2 || $3 || $4",
+    var res = exec(conn, "SELECT $1 || $2 || $3 || $4",
                          a, b, @[5.05, 6.06],
                          @[7.07, 8.08])
     var value = getValue(res[0])
@@ -190,7 +190,7 @@ proc testTypes(conn: apgConnection) {.async.} =
   block: # array[float] test
     var a = [1.01, 2.02]
     var b = [3.03, 4.04]
-    var res = await exec(conn, "SELECT $1 || $2 || $3 || $4",
+    var res = exec(conn, "SELECT $1 || $2 || $3 || $4",
                          a, b, [5.05, 6.06],
                          [7.07, 8.08])
     var value = getValue(res[0])
@@ -200,7 +200,7 @@ proc testTypes(conn: apgConnection) {.async.} =
 
   block: # seq[string]
     var a = @["January", "February", "March", "April"]
-    var res = await exec(conn, "SELECT $1 || $2",
+    var res = exec(conn, "SELECT $1 || $2",
                          a, @["May", "June", "July", "August"])
     var value = getValue(res[0])
     close(res)
@@ -209,7 +209,7 @@ proc testTypes(conn: apgConnection) {.async.} =
 
   block: # array[string]
     var a = ["January", "February", "March", "April"]
-    var res = await exec(conn, "SELECT $1 || $2",
+    var res = exec(conn, "SELECT $1 || $2",
                          a, ["May", "June", "July", "August"])
     var value = getValue(res[0])
     close(res)
@@ -218,7 +218,7 @@ proc testTypes(conn: apgConnection) {.async.} =
 
   block: # json test
     var j = %* {"name": "John", "age": 30}
-    var res = await exec(conn, "SELECT ($1->>'name') || ' ' || ($2->>'name')",
+    var res = exec(conn, "SELECT ($1->>'name') || ' ' || ($2->>'name')",
                          j, %* {"name": "John", "age": 30})
     var value = getValue(res[0])
     close(res)
@@ -227,13 +227,13 @@ proc testTypes(conn: apgConnection) {.async.} =
 
   block: # jsonb test
     var j = %* {"name": "John", "age": 30}
-    var res = await exec(conn, "SELECT ($1->>'name') || ' ' || ($2->>'name')",
+    var res = exec(conn, "SELECT ($1->>'name') || ' ' || ($2->>'name')",
                          Jsonb(j), Jsonb(%* {"name": "John", "age": 30}))
     var value = getValue(res[0])
     close(res)
     doAssert(value == "John John")
     # expect "John John"
 
-var conn = waitFor connect(connStr)
-waitFor testTypes(conn)
+var conn = run connect(connStr)
+run testTypes(conn)
 close(conn)

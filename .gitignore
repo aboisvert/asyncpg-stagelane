@@ -2,6 +2,9 @@ nimble.develop
 nimble.paths
 nimbledeps
 
+# Atlas checkouts. Restore with `atlas install` (follow #head) or `atlas rep` (atlas.lock).
+deps/
+
 # ignore files with no extension under the tests directory
 !tests/**/*.*
 tests/**/*

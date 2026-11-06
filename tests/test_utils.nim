@@ -1,8 +1,8 @@
-import asyncdispatch, asyncpg_stagelane, strutils, test_db
+import stagelane, asyncpg_stagelane, strutils, test_db
 
-proc testEncoding(conn: apgConnection): Future[bool] {.async.} =
+proc testEncoding(conn: apgConnection): bool {.flow.} =
   result = false
-  await setClientEncoding(conn, "WIN1252")
+  setClientEncoding(conn, "WIN1252")
   var s = getClientEncoding(conn)
   if s == "WIN1252":
     result = true
@@ -35,47 +35,47 @@ proc testEscape(conn: apgConnection): bool =
     inc(i)
   result = r1 and r2 and r3
 
-proc testCopy(conn: apgConnection): Future[bool] {.async.} =
+proc testCopy(conn: apgConnection): bool {.flow.} =
   result = false
   var inString = newString(80)
   var outString = "8\l8\l8\l8\l8\l8\l8\l8\l8\l8\l"
 
-  var dr = await exec(conn, "DROP TABLE IF EXISTS foo;")
+  var dr = exec(conn, "DROP TABLE IF EXISTS foo;")
   close(dr)
 
-  var ar = await exec(conn, "CREATE TABLE foo(a int8);")
+  var ar = exec(conn, "CREATE TABLE foo(a int8);")
   close(ar)
 
-  var sr1 = await exec(conn, "COPY foo FROM stdin;")
+  var sr1 = exec(conn, "COPY foo FROM stdin;")
   close(sr1)
 
-  var cr1 = await copyTo(conn, cast[pointer](addr outString[0]),
+  var cr1 = copyTo(conn, cast[pointer](addr outString[0]),
                          len(outString).int32)
   close(cr1)
-  var cr2 = await copyTo(conn, nil, 0.int32)
+  var cr2 = copyTo(conn, nil, 0.int32)
   var rowsAffected = getAffectedRows(cr2[0])
   close(cr2)
 
   if rowsAffected == 10:
-    var sr2 = await exec(conn, "COPY foo TO STDOUT;")
+    var sr2 = exec(conn, "COPY foo TO STDOUT;")
     close(sr2)
     var idx = 0
     while true:
-      var cr3 = await copyFromInto(conn, cast[pointer](addr inString[idx]),
+      var cr3 = copyFromInto(conn, cast[pointer](addr inString[idx]),
                                    len(inString))
       if cr3 == 0:
         inString.setLen(idx)
         break
       else:
         idx += cr3
-  var br = await exec(conn, "DROP TABLE foo;")
+  var br = exec(conn, "DROP TABLE foo;")
   close(br)
   result = (inString == outString)
 
-var conn = waitFor connect(connStr)
+var conn = run connect(connStr)
 
 block: # set/get encoding test
-  var res = waitFor(testEncoding(conn))
+  var res = run(testEncoding(conn))
   doAssert(res)
 
 block: # protocol/server/api versions test
@@ -87,7 +87,7 @@ block: # escaping test
   doAssert(res)
 
 block: # copy test
-  var res = waitFor(testCopy(conn))
+  var res = run(testCopy(conn))
   doAssert(res)
 
 close(conn)

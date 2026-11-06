@@ -1,0 +1,48 @@
+{
+  "items": {
+    "db_connector": {
+      "dir": "$deps/db_connector",
+      "url": "https://github.com/nim-lang/db_connector",
+      "commit": "c77cffdfed0b5a74dc10f599206c5a883778af0d",
+      "version": ""
+    },
+    "stagelane": {
+      "dir": "$deps/stagelane",
+      "url": "https://github.com/ghazalialshafi/stagelane",
+      "commit": "f72f1ea1cc603d6e00704988c18e496237617ac5",
+      "version": ""
+    }
+  },
+  "nimcfg": [
+    "############# begin Atlas config section ##########",
+    "--noNimblePath",
+    "--path:\"deps/db_connector/src\"",
+    "--path:\"deps/stagelane/src\"",
+    "############# end Atlas config section   ##########",
+    ""
+  ],
+  "nimbleFile": {
+    "filename": "asyncpg_stagelane.nimble",
+    "content": [
+      "# Package",
+      "version     = \"0.1.0\"",
+      "author      = \"Alex Boisvert\"",
+      "#original_author  = \"Eugene Kabanov\"",
+      "description = \"Asynchronous PostgreSQL driver for Nim (ported to stagelane async runtime)\"",
+      "license     = \"MIT\"",
+      "# Skip tests directory",
+      "skipDirs = @[\"tests\"]",
+      "# Deps",
+      "requires \"nim >= 2.2.0\"",
+      "requires \"db_connector\"",
+      "requires \"https://github.com/ghazalialshafi/stagelane#head\"",
+      "",
+      ""
+    ]
+  },
+  "hostOS": "macosx",
+  "hostCPU": "arm64",
+  "nimVersion": "2.2.12",
+  "gccVersion": "",
+  "clangVersion": ""
+}

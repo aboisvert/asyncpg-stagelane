@@ -38,13 +38,18 @@ db-refresh:
 psql: _postgres-ready
     docker exec -it "{{container_name}}" psql -U "{{postgres_user}}" -d "{{postgres_db}}"
 
+# Clone Atlas dependencies into deps/ (stagelane from git, db_connector).
+deps:
+    atlas install
+
 # Compile all integration tests (Appveyor build_script; Unix paths).
-test-build:
+# Uses `nim c` so nim.cfg's Atlas paths win over Nimble's global package dir.
+test-build: deps
     #!/usr/bin/env bash
     set -euo pipefail
     tests=$(ls tests/*.nim | sed 's/\.nim//g')
     for test in $tests; do
-      nimble c --path:"." $test
+      nim c "$test"
     done
 
 # Run all integration test binaries (Appveyor test_script; Unix paths).
@@ -62,7 +67,6 @@ test-run:
     fi
     tests=(test_types test_pool test_rows test_notifies test_utils)
     for name in "${tests[@]}"; do
-      "tests/${name}_plain"
       "tests/${name}"
     done
 

@@ -1,51 +1,54 @@
-import asyncdispatch, asyncpg_stagelane, test_db
+import stagelane, asyncpg_stagelane, test_db
 
 const POOL_SIZE = 20
 
-proc makeLongCall(pool: apgPool) {.async.} =
-  var res = await exec(pool, "SELECT pg_sleep(1);")
+proc makeLongCall(pool: apgPool) {.flow.} =
+  var res = exec(pool, "SELECT pg_sleep(1);")
   close(res)
 
-proc makeShortCall(pool: apgPool) {.async.} =
-  var res = await exec(pool, "SELECT pg_sleep(0.5);")
+proc makeShortCall(pool: apgPool) {.flow.} =
+  var res = exec(pool, "SELECT pg_sleep(0.5);")
   close(res)
 
-proc testPool(pool: apgPool): Future[bool] {.async.} =
+proc testPool(pool: apgPool): bool {.flow.} =
   result = false
   var i = 0
-  var futs = newSeq[Future[void]](POOL_SIZE)
+  var tasks = newSeq[Task[void]](POOL_SIZE)
   while i < POOL_SIZE:
-    futs[i] = makeLongCall(pool)
+    tasks[i] = go makeLongCall(pool)
     inc(i)
-  await makeShortCall(pool)
+  # `go` only queues the tasks. Yield so each long call checks out a
+  # connection and starts pg_sleep before this task asks for one.
+  yieldNow()
+  makeShortCall(pool)
   var k = 0
   i = 0
   while i < POOL_SIZE:
-    if futs[i].finished:
+    if done(tasks[i].TaskBase):
       inc(k)
     inc(i)
   if k == POOL_SIZE:
     result = true
 
-proc testWithConnection(pool: apgPool): Future[bool] {.async.} =
+proc testWithConnection(apgP: apgPool): bool {.flow.} =
   result = true
 
-  withConnection(pool, conn) do:
-    await setClientEncoding(conn, "WIN1252")
-  withConnection(pool, conn) do:
+  withConnection(apgP, conn) do:
+    setClientEncoding(conn, "WIN1252")
+  withConnection(apgP, conn) do:
     var b = getClientEncoding(conn)
     if b != "WIN1252":
       result = false
 
 var pool = newPool(POOL_SIZE)
 
-waitFor pool.connect(connStr)
+run pool.connect(connStr)
 block:
-  var res = waitFor testPool(pool)
+  var res = run testPool(pool)
   doAssert(res)
 
 block:
-  var res = waitFor testWithConnection(pool)
+  var res = run testWithConnection(pool)
   doAssert(res)
 
 close(pool)

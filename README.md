@@ -30,23 +30,22 @@ $ brew install libpq
 $ sudo apt-get install libpq libpq-dev pkg-config
 ```
 
-You can use Nim official package manager `nimble` to install `asyncpg-stagelane`. The most recent version of the library can be installed via:
+Requires Nim 2.2+. Dependencies are vendored with [Atlas](https://github.com/nim-lang/atlas) into `deps/`. [stagelane](https://github.com/ghazalialshafi/stagelane) is not on the Nimble package index; this repo requires its git tip (`#head`). `atlas.lock` records the commits last resolved.
 
 ```
-$ nimble install asyncpg-stagelane
+$ atlas install
 ```
 
-To install from a local checkout of this repository:
-
-```
-$ nimble install .
-```
+`atlas rep` checks out the commits in `atlas.lock` instead of resolving `#head` again.
 
 ## Minimal requirements
 
 - LibPQ (see Installation)
 - PostgreSQL 9.x (if you want to have support for JSONB types, you need PostgreSQL 9.4 at least)
-- Nim language compiler 2.2+
+- Nim 2.2+ (`requires "nim >= 2.2.0"`)
+- [stagelane](https://github.com/ghazalialshafi/stagelane), vendored by Atlas from its git repository (`atlas install`)
+
+This driver uses stagelane’s POSIX event loop (`waitReadable` / `waitWritable` on the libpq socket). Use each connection or pool only on the thread whose stagelane scheduler is driving I/O.
 
 ## Integration tests
 
@@ -66,7 +65,7 @@ $ just postgres-start
 host=localhost port=5432 dbname=asyncpg user=postgres password=postgres
 ```
 
-Run the full suite (starts Postgres, compiles tests against the repo and the installed package, then runs everything — same flow as Appveyor):
+Run the full suite (starts Postgres, vendors dependencies with Atlas, compiles tests, then runs them):
 
 ```
 $ just test
@@ -78,7 +77,8 @@ Other helpers:
 
 | Command | Purpose |
 |---------|---------|
-| `just test-build` | Compile integration tests only |
+| `just deps` | Clone Atlas dependencies into `deps/` |
+| `just test-build` | Compile integration tests (`atlas install`, then `nim c`) |
 | `just test-run` | Run compiled test binaries (expects `test-build` first) |
 | `just postgres-stop` | Stop and remove the container |
 | `just db-wipe` | Drop and recreate the `asyncpg` database (Postgres keeps running) |
@@ -89,10 +89,46 @@ If port 5432 is already in use on your machine, stop the other service or change
 
 ## Usage
 
-Import the package as `asyncpg_stagelane`:
+Import this package together with stagelane. Suspending APIs are `{.flow.}` procs: call them from other flow code, or from `main` via `run`, which drives the event loop until the call finishes.
 
 ```nim
+import stagelane
 import asyncpg_stagelane
+
+proc app(connStr: string) {.flow.} =
+  let conn = connect(connStr)
+  defer: close(conn)
+  var res = exec(conn, "SELECT 1;")
+  defer: close(res)
+  echo getValue(res[0])
+
+run app("host=... port=5432 dbname=... user=... password=...")
+```
+
+Overlapping queries use `go` and `await` on `Task` handles:
+
+```nim
+proc long(pool: apgPool) {.flow.} =
+  var r = exec(pool, "SELECT pg_sleep(1);")
+  close(r)
+
+proc main(pool: apgPool) {.flow.} =
+  let t = go long(pool)
+  # ... other work ...
+  await t
+
+run main(myPool)
+```
+
+LISTEN/NOTIFY: register a waiter with `notify`, send with `sendNotify`, then wait in a child task and use `waitFor` for a timeout (same pattern as the integration tests):
+
+```nim
+proc waitOnce(conn: apgConnection) {.flow.} =
+  listenNotify(conn, "ch")
+  let w = notify(conn, "ch")
+  sendNotify(conn, "ch", "hello")
+  discard waitFor(go waitNotify(w), 100)
+  unlistenNotify(conn, "ch")
 ```
 
 ## ToDo
