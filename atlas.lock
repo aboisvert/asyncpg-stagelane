@@ -6,6 +6,12 @@
       "commit": "c77cffdfed0b5a74dc10f599206c5a883778af0d",
       "version": ""
     },
+    "malebolgia": {
+      "dir": "$deps/malebolgia",
+      "url": "https://github.com/Araq/malebolgia",
+      "commit": "ab17bef08e8e84fabc33e0b039b324438e1ce27b",
+      "version": ""
+    },
     "stagelane": {
       "dir": "$deps/stagelane",
       "url": "https://github.com/ghazalialshafi/stagelane",
@@ -17,6 +23,7 @@
     "############# begin Atlas config section ##########",
     "--noNimblePath",
     "--path:\"deps/db_connector/src\"",
+    "--path:\"deps/malebolgia/src\"",
     "--path:\"deps/stagelane/src\"",
     "############# end Atlas config section   ##########",
     ""
@@ -35,6 +42,7 @@
       "# Deps",
       "requires \"nim >= 2.2.0\"",
       "requires \"db_connector\"",
+      "requires \"malebolgia >= 1.3.2\"",
       "requires \"https://github.com/ghazalialshafi/stagelane#head\"",
       "",
       ""

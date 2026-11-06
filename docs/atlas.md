@@ -19,10 +19,11 @@ Current requirements:
 ```nim
 requires "nim >= 2.2.0"
 requires "db_connector"
+requires "malebolgia >= 1.3.2"
 requires "https://github.com/ghazalialshafi/stagelane#head"
 ```
 
-`nim >= 2.2.0` is the Nimble spelling of the Nim 2.2+ requirement. Atlas checks it and does not clone a compiler. `db_connector` is a name in the Nimble package index, which Atlas maps to `https://github.com/nim-lang/db_connector`. `stagelane` is absent from that index (`nimble search stagelane` finds nothing), so the requirement has to be a git URL.
+`nim >= 2.2.0` is the Nimble spelling of the Nim 2.2+ requirement. Atlas checks it and does not clone a compiler. `db_connector` is a name in the Nimble package index, which Atlas maps to `https://github.com/nim-lang/db_connector`. `malebolgia` is also index-hosted (`https://github.com/Araq/malebolgia`). `stagelane` is absent from that index (`nimble search stagelane` finds nothing), so the requirement has to be a git URL.
 
 ## Day to day
 
@@ -79,6 +80,7 @@ Atlas's whole integration with the compiler is `nim.cfg`:
 ```text
 --noNimblePath
 --path:"deps/db_connector/src"
+--path:"deps/malebolgia/src"
 --path:"deps/stagelane/src"
 ```
 

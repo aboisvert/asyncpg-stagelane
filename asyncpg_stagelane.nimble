@@ -9,5 +9,6 @@ skipDirs = @["tests"]
 # Deps
 requires "nim >= 2.2.0"
 requires "db_connector"
+requires "malebolgia >= 1.3.2"
 requires "https://github.com/ghazalialshafi/stagelane#head"
 
