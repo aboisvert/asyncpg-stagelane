@@ -10,7 +10,7 @@ proc testTypes(conn: apgConnection) {.async.} =
 
   block: # char type test
     var a = 0x30'u8
-    var res = await exec(conn, "SELECT $1 || $2", a, 0x31'u8)
+    var res = await exec(conn, "SELECT $1::text || $2::text", a, 0x31'u8)
     var value = getValue(res[0])
     close(res)
     doAssert(value == "01")
