@@ -65,7 +65,7 @@ test-run:
         *) export DYLD_FALLBACK_LIBRARY_PATH="${libpq_lib}${DYLD_FALLBACK_LIBRARY_PATH:+:$DYLD_FALLBACK_LIBRARY_PATH}" ;;
       esac
     fi
-    tests=(test_types test_pool test_rows test_notifies test_utils test_torture test_mt test_torture_mt test_shared_pool)
+    tests=(test_types test_pool test_rows test_notifies test_utils test_torture test_mt test_torture_mt test_shared_pool test_regressions)
     for name in "${tests[@]}"; do
       "tests/${name}"
     done

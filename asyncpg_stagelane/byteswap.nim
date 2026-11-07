@@ -7,197 +7,41 @@
 #    distribution, for details about the copyright.
 #
 
-## This module implements functions for network byteorder
-## conversation for different platforms.
-## (Windows, MacOS, FreeBSD, OpenBSD, NetBSD, Linux, Solaris)
+## Host to network (big endian) byte order conversion.
+##
+## `hton` swaps in place of the old per-OS table of intrinsics: every supported
+## compiler provides `__builtin_bswap*` (gcc, clang) or `_byteswap_*` (MSVC),
+## and anything else falls back to portable shifts.
 
-when cpuEndian == bigEndian:
-  template prepare*(x: int16): int16 = x
-  template prepare*(x: uint16): uint16 = x
-  template prepare*(x: int32): int32 = x
-  template prepare*(x: uint32): uint32 = x
-  template prepare*(x: int): int = x
-  template prepare*(x: uint): uint = x
-  template prepare*(x: float32): float32 = x
-  template prepare*(x: float64): float64 = x
-  template prepare*(x: float): float = x
-  template prepare*(x: bool): bool = x
-  template prepare*(x: int64): int64 = x
-  template prepare*(x: uint64): uint64 = x
+when defined(gcc) or defined(clang) or defined(llvm_gcc):
+  func bswap32(x: uint32): uint32 {.importc: "__builtin_bswap32", nodecl.}
+  func bswap64(x: uint64): uint64 {.importc: "__builtin_bswap64", nodecl.}
+elif defined(vcc):
+  func bswap32(x: uint32): uint32
+       {.importc: "_byteswap_ulong", header: "<stdlib.h>".}
+  func bswap64(x: uint64): uint64
+       {.importc: "_byteswap_uint64", header: "<stdlib.h>".}
 else:
-  template prepareLong*(x: int64): int64 =
-    ((cast[int64](x) shl 56) or
-     ((cast[int64](x) shl 40) and 0xFF000000000000'i64) or
-     ((cast[int64](x) shl 24) and 0xFF0000000000'i64) or
-     ((cast[int64](x) shl 8) and 0xFF00000000'i64) or
-     ((cast[int64](x) shr 8) and 0xFF000000'i64) or
-     ((cast[int64](x) shr 24) and 0xFF0000'i64) or
-     ((cast[int64](x) shr 40) and 0xFF00'i64) or
-     (cast[int64](x) shr 56))
+  func bswap32(x: uint32): uint32 =
+    (x shl 24) or ((x and 0xFF00'u32) shl 8) or
+      ((x shr 8) and 0xFF00'u32) or (x shr 24)
+  func bswap64(x: uint64): uint64 =
+    (uint64(bswap32(uint32(x))) shl 32) or uint64(bswap32(uint32(x shr 32)))
 
-  template prepareLong*(x: uint64): uint64 =
-    cast[uint64](prepareLong(cast[int64](x)))
+# Dispatch is on size at compile time. Floats work because only the bit pattern
+# is swapped (cast), never the numeric value.
+template hton*[T: SomeNumber | bool | char](x: T): T =
+  ## Converts `x` to network byte order (no-op for 1 byte types and on
+  ## big endian hosts). Works for floats by swapping their bit pattern.
+  when cpuEndian == bigEndian or sizeof(T) == 1:
+    x
+  elif sizeof(T) == 2:
+    cast[T]((cast[uint16](x) shr 8) or (cast[uint16](x) shl 8))
+  elif sizeof(T) == 4:
+    cast[T](bswap32(cast[uint32](x)))
+  else:
+    cast[T](bswap64(cast[uint64](x)))
 
-  when defined(windows):
-    when defined(vcc):
-      proc prepare*(x: uint16): uint16
-           {.importc: "_byteswap_ushort", header: "<intrin.h>".}
-      template prepare*(x: int16): int16 =
-        cast[int16](prepare(x.uint16))
-      proc prepare*(x: uint32): uint32
-           {.importc: "_byteswap_ulong", header: "<intrin.h>".}
-      template prepare*(x: int32): int32 =
-        cast[int32](prepare(x.uint32))
-      when sizeof(int) == 8:
-        proc prepare*(x: uint64): uint64
-             {.importc: "_byteswap_uint64", header: "<intrin.h>".}
-        template prepare*(x: int64): int64 =
-          cast[int64](prepare(x.uint64))
-      else:
-        proc prepare*(x: uint64): uint64 =
-          result = prepareLong(x)
-        proc prepare*(x: int64): int64 =
-          result = prepareLong(x)
-    elif defined(gcc):
-      template prepare*(x: uint16): uint16 =
-               (x shr 8'u16) or (x shl 8'u16)
-      template prepare*(x: int16): int16 =
-        (cast[int16](prepare(x.uint16)))
-      proc prepare*(x: uint32): uint32
-           {.importc: "__bswapd", header: "<x86intrin.h>".}
-      template prepare*(x: int32): int32 =
-        (cast[int32](prepare(x.uint32)))
-      when sizeof(int) == 8:
-        proc prepare*(x: uint64): uint64
-             {.importc: "__bswapq", header: "<x86intrin.h>".}
-        template prepare*(x: int64): int64 =
-          (cast[int64](prepare(x.uint64)))
-      else:
-        proc prepare*(x: uint64): uint64 =
-          result = prepareLong(x)
-        proc prepare*(x: int64): int64 =
-          result = prepareLong(x)
-
-  elif defined(macosx):
-    template prepare*(x: uint16): uint16 =
-      (x shr 8'u16) or (x shl 8'u16)
-    template prepare*(x: int16): int16 =
-      (cast[int16](prepare(x.uint16)))
-    proc prepare*(x: uint32): uint32
-         {.importc: "__builtin_bswap32", header: "<sys/_endian.h>".}
-    template prepare*(x: int32): int32 =
-      (cast[int32](prepare(x.uint32)))
-    when sizeof(int) == 8:
-      proc prepare*(x: uint64): uint64
-           {.importc: "__builtin_bswap64", header: "<sys/_endian.h>".}
-      template prepare*(x: int64): int64 =
-        (cast[int64](prepare(x.uint64)))
-    else:
-      proc prepare*(x: uint64): uint64 =
-        result = prepareLong(x)
-      proc prepare*(x: int64): int64 =
-        result = prepareLong(x)
-
-  elif defined(linux):
-    proc prepare*(x: uint16): uint16
-         {.importc: "bswap_16", header: "<byteswap.h>".}
-    template prepare*(x: int16): int16 =
-      (cast[int16](prepare(x.uint16)))
-    proc prepare*(x: uint32): uint32
-         {.importc: "bswap_32", header: "<byteswap.h>".}
-    template prepare*(x: int32): int32 =
-      (cast[int32](prepare(x.uint32)))
-    when sizeof(int) == 8:
-      proc prepare*(x: uint64): uint64
-        {.importc: "bswap_64", header: "<byteswap.h>".}
-      template prepare*(x: int64): int64 =
-        (cast[int64](prepare(x.uint64)))
-    else:
-      proc prepare*(x: uint64): uint64 =
-        result = prepareLong(x)
-      proc prepare*(x: int64): int64 =
-        result = prepareLong(x)
-
-  elif defined(freebsd) or defined(netbsd):
-    proc prepare*(x: uint16): uint16
-         {.importc: "bswap16", header: "<sys/endian.h>".}
-    template prepare*(x: int16): int16 =
-      (cast[int16](prepare(x.uint16)))
-    proc prepare*(x: uint32): uint32
-         {.importc: "bswap32", header: "<sys/endian.h>".}
-    template prepare*(x: int32): int32 =
-      (cast[int32](prepare(x.uint32)))
-    when sizeof(int) == 8:
-      proc prepare*(x: uint64): uint64
-           {.importc: "bswap64", header: "<sys/endian.h>".}
-      template prepare*(x: int64): int64 =
-        (cast[int64](prepare(x.uint64)))
-    else:
-      proc prepare*(x: uint64): uint64 =
-        result = prepareLong(x)
-      proc prepare*(x: int64): int64 =
-        result = prepareLong(x)
-
-  elif defined(openbsd):
-    proc prepare*(x: uint16): uint16
-         {.importc: "__swap16", header: "<sys/_endian.h>".}
-    template prepare*(x: int16): int16 =
-      (cast[int16](prepare(x.uint16)))
-    proc prepare*(x: uint32): uint32
-         {.importc: "__swap32", header: "<sys/_endian.h>".}
-    template prepare*(x: int32): int32 =
-      (cast[int32](prepare(x.uint32)))
-    when sizeof(int) == 8:
-      proc prepare*(x: uint64): uint64
-           {.importc: "__swap64", header: "<sys/_endian.h>".}
-      template prepare*(x: int64): int64 =
-        (cast[int64](prepare(x.uint64)))
-    else:
-      proc prepare*(x: uint64): uint64 =
-        result = prepareLong(x)
-      proc prepare*(x: int64): int64 =
-        result = prepareLong(x)
-  elif defined(solaris):
-    proc prepare*(x: uint16): uint16
-         {.importc: "htons", header: "<asm/byteorder.h>".}
-    template prepare*(x: int16): int16 =
-      (cast[int16](prepare(x.uint16)))
-    proc prepare*(x: uint32): uint32
-         {.importc: "htonl", header: "<asm/byteorder.h>".}
-    template prepare*(x: int32): int32 =
-      (cast[int32](prepare(x.uint32)))
-    when sizeof(int) == 8:
-      proc prepare*(x: uint64): uint64
-           {.importc: "htonll", header: "<asm/byteorder.h>".}
-      template prepare*(x: int64): int64 =
-        (cast[int64](prepare(x.uint64)))
-    else:
-      proc prepare*(x: uint64): uint64 =
-        result = prepareLong(x)
-      proc prepare*(x: int64): int64 =
-        result = prepareLong(x)
-
-  when sizeof(int) == 8:
-    template prepare*(x: int): int =
-      (cast[int](prepare(x.uint64)))
-    template prepare*(x: uint): uint =
-      (cast[uint](prepare(x.uint64)))
-  elif sizeof(int) == 4:
-    template prepare*(x: int): int =
-      (cast[int](prepare(x.uint32)))
-    template prepare*(x: uint): uint =
-      (cast[uint](prepare(x.uint32)))
-  elif sizeof(int) == 2:
-    template prepare*(x: int): int =
-      (cast[int](prepare(x.uint16)))
-    template prepare*(x: uint): uint =
-      (cast[uint](prepare(x.uint32)))
-
-  template prepare*(x: float32): float32 =
-    (cast[float32](prepare(cast[int32](x))))
-  template prepare*(x: float64): float64 =
-    (cast[float64](prepare(cast[int64](x))))
-  template prepare*(x: float): float {.redefine.} =
-    (cast[float](prepare(cast[int64](x))))
-
-  template prepare*(x: bool): bool = x
+template prepare*[T: SomeNumber | bool | char](x: T): T =
+  ## Old name of `hton`, kept for compatibility.
+  hton(x)

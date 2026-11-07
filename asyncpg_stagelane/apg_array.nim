@@ -7,7 +7,11 @@
 #    distribution, for details about the copyright.
 #
 
-## This module implements PostgreSQL ARRAY binary helper
+## This module implements PostgreSQL ARRAY binary helper.
+##
+## Layout (one dimension, network byte order): int32 ndim, int32 flags,
+## int32 element OID, int32 length, int32 lower bound, then per element an
+## int32 byte length followed by the value. `PgArray` owns the malloc'd buffer.
 
 import strutils, byteswap
 
@@ -18,7 +22,7 @@ type
   PgArray*[T] = object
     p: pointer
     size: int
-    swap: bool
+    swap: bool  ## element values were byteswapped (false for bool/string)
 
   pgArrayElement* [T] {.packed.} = object
     size: int32
@@ -26,6 +30,12 @@ type
 
 proc `+`(p: pointer, i: uint|int): pointer {.inline.} =
   cast[pointer](cast[uint](p) + i.uint)
+
+# Moves only: a copy would double-free the buffer.
+proc `=destroy`*[T](pga: PgArray[T]) =
+  if pga.p != nil: dealloc(pga.p)
+
+proc `=copy`*[T](dst: var PgArray[T], src: PgArray[T]) {.error.}
 
 proc newPgArray*[T](x: openarray[T], swap = false): PgArray[T] =
   var oid: int32 = 0
@@ -63,6 +73,8 @@ proc newPgArray*[T](x: openarray[T], swap = false): PgArray[T] =
     var i = 0
 
     while i < len(x):
+      if len(x[i]) >= high(int32):  # validate before allocating
+        raise newException(ValueError, "String with index `" & $i & "` is too big!")
       size += len(x[i])
       inc(i)
     size += len(x) * sizeof(int32) + 20
@@ -82,12 +94,10 @@ proc newPgArray*[T](x: openarray[T], swap = false): PgArray[T] =
       var ss = x[i]
       var ms = cast[ptr int32](d)
       var ml = len(x[i])
-      if ml >= high(int32):
-        raise newException(ValueError, "String with index `" & $i & "` is too big!")
       var ps = prepare(ml.int32)
       ms[] = ps.int32
       d = d + 4
-      copyMem(d, addr ss[0], ml)
+      if ml > 0: copyMem(d, addr ss[0], ml)
       d = d + ml
       inc(i)
     result = PgArray[T](p: p, size: size, swap: swap)
@@ -172,7 +182,11 @@ proc size*[T](pga: PgArray[T]): int =
 
 proc len*[T](pga: PgArray[T]): int =
   var h = cast[ptr UncheckedArray[int32]](pga.p)
-  result = h[3].int
+  result = prepare(h[3]).int
 
-proc free*[T](pga: PgArray[T]) =
-  dealloc(pga.p)
+proc free*[T](pga: var PgArray[T]) =
+  ## Releases the buffer early; safe to call more than once.
+  if pga.p != nil:
+    dealloc(pga.p)
+    pga.p = nil
+

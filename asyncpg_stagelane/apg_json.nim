@@ -7,7 +7,10 @@
 #    distribution, for details about the copyright.
 #
 
-## This module implements PostgreSQL JSONB binary helper
+## This module implements PostgreSQL JSONB binary helper.
+##
+## The JSONB binary wire format is a single version byte (1) followed by the
+## JSON text. `PgJson` owns the malloc'd buffer.
 
 import json, strutils, byteswap
 
@@ -21,6 +24,11 @@ type
 
 proc `+`(p: pointer, i: uint|int): pointer {.inline.} =
   cast[pointer](cast[uint](p) + i.uint)
+
+proc `=destroy`*(pgj: PgJson) =
+  if pgj.p != nil: dealloc(pgj.p)
+
+proc `=copy`*(dst: var PgJson, src: PgJson) {.error.}
 
 proc newPgJson*(n: JsonNode): PgJson =
   var s = $n
@@ -36,9 +44,9 @@ proc raw*(pgj: PgJson): pointer =
   result = pgj.p
 
 proc `$`*(pgj: PgJson): string =
-  var h = cast[ptr UncheckedArray[int32]](pgj.p)
+  var h = cast[ptr UncheckedArray[int8]](pgj.p)
   result = "PGJSON at 0x" & toHex(cast[int](pgj.p), sizeof(int) * 2) & "\n"
-  result &= "header = [version = " & $prepare(h[0]) & "]\n"
+  result &= "header = [version = " & $h[0] & "]\n"
   var d = cast[pointer](pgj.p + 1)
   var r = newString(pgj.size)
   copyMem(addr(r[0]), d, pgj.size - 1)
@@ -48,8 +56,12 @@ proc `$`*(pgj: PgJson): string =
 proc size*(pgj: PgJson):int =
   result = pgj.size
 
-proc free*(pgj: PgJson) =
-  dealloc(pgj.p)
+proc free*(pgj: var PgJson) =
+  ## Releases the buffer early; safe to call more than once.
+  if pgj.p != nil:
+    dealloc(pgj.p)
+    pgj.p = nil
+
 
 when isMainModule:
   var j = %* [{"name": "John", "age": 30}, {"name": "Susan", "age": 31}]

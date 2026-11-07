@@ -208,6 +208,30 @@ On one thread, a connection runs one libpq operation at a time. A second `exec`,
 
 `notify` / `waitNotify` park on that same thread. Payloads are read only while the listening connection is inside `exec` or COPY, so a waiter makes progress only when that connection is running an operation. `listenNotify` on a pool issues `LISTEN` on the one connection it checks out, so the other slots in the pool are not listening.
 
+## Errors, ownership and NULLs
+
+* Every failure raises a subtype of `ApgError` (itself a `ValueError`): `ApgConnectionError` for socket/protocol problems and `ApgQueryError` for server-side rejections. `ApgQueryError.sqlState` holds the five character SQLSTATE (`"22012"` for division by zero, and so on).
+* After a SQL error the connection stays usable: remaining results are drained before the error is raised, and pools keep healthy connections instead of reconnecting. Only broken connections, or ones left inside an open transaction, are discarded.
+* `ApgResult`, `ApgConnection`, `PgArray` and `PgJson` release their libpq/heap memory automatically when they go out of scope. `close` is still available to release earlier and may be called more than once.
+* `getValue`/`getRow` return `""` for NULL. Use `isNull(res[0], row, col)` or `getValueOpt` to tell NULL from the empty string.
+* `NotifyWait` registrations are dropped when a waiter times out or is cancelled (`cancel(w)`), so a later NOTIFY is not lost to a dead waiter.
+* `takeNotices(conn)` returns (and clears) the most recent server notices; at most 64 are kept per connection.
+* `LISTEN`/`UNLISTEN` channel names are quoted as identifiers (`quoteIdent`).
+* `ApgPool.connect` opens its connections concurrently. Pool slots are private: use `withConnection` or `connectionAt(pool, idx)` between `checkout` and `checkin`.
+
+## Source layout
+
+| Module | Responsibility |
+|--------|----------------|
+| `apg_ffi` | libpq symbols missing from `db_connector`, library name |
+| `apg_errors` | `ApgError` hierarchy, `raiseConnError`/`raiseResultError`, `quoteIdent` |
+| `apg_oids` | Compile-time Nim type to PostgreSQL OID tables |
+| `apg_params` | The `exec` parameter-binding macro |
+| `apg_array`, `apg_json`, `byteswap` | Binary ARRAY/JSONB encoders and `hton` |
+| `apg_core` | Connections, `ApgPool`, query pump, COPY, rows, LISTEN/NOTIFY |
+| `apg_escape` | `escapeString`, `escapeBytea`, `unescapeBytea` |
+| `apg_shared_pool` | Opt-in thread-safe pool |
+
 ## ToDo
 
 * Add objects to automatic type conversion
