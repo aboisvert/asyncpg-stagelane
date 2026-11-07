@@ -1,8 +1,9 @@
 ## Multi-threaded smoke test: malebolgia `spawn`s N workers on the pool; each worker
 ## runs `run burstWork(...)` so it gets its own stagelane scheduler thread-locally.
 ## Never share an `apgPool` or `apgConnection` across OS threads (libpq and our pool
-## are not synchronized). `import malebolgia except cancel` avoids clashing with
-## stagelane's task `cancel`.
+## are not synchronized). For a thread-safe pool across workers, use `apgSharedPool`
+## (`import asyncpg_stagelane/apg_shared_pool`; see `tests/test_shared_pool.nim`).
+## `import malebolgia except cancel` avoids clashing with stagelane's task `cancel`.
 import std/[strutils, times]
 import malebolgia except cancel
 import stagelane, asyncpg_stagelane, test_db

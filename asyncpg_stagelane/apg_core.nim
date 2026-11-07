@@ -11,7 +11,7 @@
 
 import db_connector/postgres, strutils, macros, json, lists
 import stagelane
-import apg_array, apg_json
+import apg_array, apg_json, byteswap
 
 type
   apgNotify* = object
@@ -28,7 +28,7 @@ type
     arrived*: bool
     ntf*: apgNotify
 
-  apgNotifyCell = object
+  apgNotifyCell* = object
     wait*: NotifyWait ## registration from `notify`; nil for a queued server NOTIFY
     data*: apgNotify ## full payload when `wait` is nil (pool exec path)
 
@@ -68,8 +68,10 @@ proc pqlibVersion(): cint
      {.cdecl, dynlib: dllName, importc: "PQlibVersion".}
 proc pqserverVersion(conn: PPGconn): cint
      {.cdecl, dynlib: dllname, importc: "PQserverVersion".}
+proc pqisthreadsafe*(): cint
+     {.cdecl, dynlib: dllName, importc: "PQisthreadsafe".}
 
-proc socketFd(conn: PPGconn): int {.inline.} =
+proc socketFd*(conn: PPGconn): int {.inline.} =
   result = pqsocket(conn).int
 
 proc newPool*(size = 10): apgPool =
@@ -202,7 +204,7 @@ template fillNotifyFromPg*(dst: var apgNotify, channel: string,
   dst.payload = $(nres.extra)
   dst.bepid = nres.be_pid
 
-proc processPendingNotifications(conn: apgConnection, connNotify: bool) =
+proc processPendingNotifications*(conn: apgConnection, connNotify: bool) =
   while true:
     var nres = pqnotifies(conn.pgconn)
     if nres == nil:
@@ -351,7 +353,32 @@ template withConnection*(poolArg: apgPool, conn, body: untyped) =
     finally:
       checkin(poolArg, apgConnIdx)
 
-proc execAsync(conn: apgConnection, statement: string, pN: int32, pT: POid,
+proc pgconn*(conn: apgConnection): PPGconn =
+  ## Raw libpq handle (read-only accessor; used by `apg_shared_pool`).
+  conn.pgconn
+
+proc forwardConnNotifiesToPool*(conn: apgConnection,
+    poolNotifies: var DoublyLinkedList[apgNotifyCell]) =
+  ## Moves NOTIFYs queued on `conn` to matching waiters registered on the pool and
+  ## wakes them. The caller must hold whatever lock protects `poolNotifies`.
+  var cnode = conn.notifies.head
+  while cnode != nil:
+    let cnext = cnode.next
+    let cdata = cnode.value.data
+    var pnode = poolNotifies.head
+    while pnode != nil:
+      let pnext = pnode.next
+      let w = pnode.value.wait
+      if w != nil and w.channel == cdata.channel:
+        w.ntf = cdata
+        w.arrived = true
+        notifyOne(w.q)
+        poolNotifies.remove(pnode)
+      pnode = pnext
+    conn.notifies.remove(cnode)
+    cnode = cnext
+
+proc execAsync*(conn: apgConnection, statement: string, pN: int32, pT: POid,
                pV: cstringArray, pL, pF: ptr int32,
                rF: int32, notifyConn = true): apgResult {.flow.} =
   var apgres = apgResult()
@@ -406,22 +433,7 @@ proc execPoolAsync(pool: apgPool, statement: string, pN: int32, pT: POid,
   try:
     result = execAsync(pool.connections[index], statement, pN, pT,
                        pV, pL, pF, rF, false)
-    var cnode = pool.connections[index].notifies.head
-    while cnode != nil:
-      let cnext = cnode.next
-      let cdata = cnode.value.data
-      var pnode = pool.notifies.head
-      while pnode != nil:
-        let pnext = pnode.next
-        let w = pnode.value.wait
-        if w != nil and w.channel == cdata.channel:
-          w.ntf = cdata
-          w.arrived = true
-          notifyOne(w.q)
-          pool.notifies.remove(pnode)
-        pnode = pnext
-      pool.connections[index].notifies.remove(cnode)
-      cnode = cnext
+    forwardConnNotifiesToPool(pool.connections[index], pool.notifies)
   except CatchableError as e:
     if pool.connections[index] != nil and pool.connections[index].pgconn != nil:
       pqfinish(pool.connections[index].pgconn)
@@ -430,6 +442,18 @@ proc execPoolAsync(pool: apgPool, statement: string, pN: int32, pT: POid,
     raise e
   finally:
     checkin(pool, index)
+
+# `exec` expands to `execDispatch` (or, for other pool types, their own async proc);
+# overloading on the first argument picks the right implementation.
+proc execDispatch*(conn: apgConnection, statement: string, pN: int32, pT: POid,
+                   pV: cstringArray, pL, pF: ptr int32,
+                   rF: int32): apgResult {.flow.} =
+  execAsync(conn, statement, pN, pT, pV, pL, pF, rF, true)
+
+proc execDispatch*(pool: apgPool, statement: string, pN: int32, pT: POid,
+                   pV: cstringArray, pL, pF: ptr int32,
+                   rF: int32): apgResult {.flow.} =
+  execPoolAsync(pool, statement, pN, pT, pV, pL, pF, rF)
 
 proc len*(apgres: apgResult): int =
   ## Returns number of query results stored inside ``apgres``.
@@ -590,11 +614,18 @@ proc callRaw(n: NimNode): NimNode {.compileTime.} =
 # cast[<v>](n)
 proc castSome(n: NimNode, v: string): NimNode {.compileTime.} =
   result = newNimNode(nnkCast).add(newIdentNode(v), n)
+
+proc endianPrepareCall(v: NimNode): NimNode {.compileTime.} =
+  ## Qualified call so it cannot resolve to stagelane's `prepare` macro.
+  ## Use ``byteswap.prepare`` explicitly so we do not pick up stagelane's ``prepare``.
+  result = quote do:
+    byteswap.prepare(`v`)
+
 # var <n> = prepare(<v>)
 proc newVarInteger(n, v: NimNode): NimNode {.compileTime.} =
   result = newNimNode(nnkVarSection).add(
     newNimNode(nnkIdentDefs).add(
-      n, newEmptyNode(), newNimNode(nnkCall).add(newIdentNode("prepare"), v)
+      n, newEmptyNode(), endianPrepareCall(v)
     )
   )
 # var <n> = <v>
@@ -630,10 +661,7 @@ proc newVarFloat(n, i, v: NimNode): NimNode {.compileTime.} =
   result = newNimNode(nnkVarSection).add(
     newNimNode(nnkIdentDefs).add(
       n, newEmptyNode(),
-      newNimNode(nnkCall).add(
-        newIdentNode("prepare"),
-        newNimNode(nnkCast).add(v, i)
-      )
+      endianPrepareCall(newNimNode(nnkCast).add(v, i))
     )
   )
 # var <n> = newPgArray((<v>))
@@ -816,28 +844,18 @@ proc getSequence(ls, ps, op, ntp, np, pv, pl, pt, pf: NimNode) {.compileTime.} =
   else:
     showError("Argument's type `seq[" & $impType & "]`is not supported", op)
 
-macro exec*(conn: apgConnection|apgPool, statement: string,
-            params: varargs[typed]): apgResult =
-  ## Submits a command ``statement`` to the server connection
-  ## or connection's pool. ``params`` is SQL parameters which will
-  ## be passed with command.
-
-  # if there no params, we just generate call to execAsync
+macro apgExecImpl*(dispatch: static[string], conn: typed, statement: string,
+                    params: varargs[typed]): untyped =
+  ## Build the statement list for ``exec``; ``dispatch`` is the async proc name
+  ## (``execDispatch`` for connections and ``apgPool``, or ``execSharedPoolAsync``).
+  let dispatchId = ident(dispatch)
   if len(params) == 0:
-    if getTypeInst(conn).strVal == "apgConnection":
-      result = newTree(nnkStmtListExpr,
-                 newCall(bindSym"execAsync", conn, statement, newLit 0,
-                         newNimNode(nnkNilLit), newNimNode(nnkNilLit),
-                         newNimNode(nnkNilLit), newNimNode(nnkNilLit),
-                         newLit(0))
-               )
-    else:
-      result = newTree(nnkStmtListExpr,
-                 newCall(bindSym"execPoolAsync", conn, statement, newLit 0,
-                         newNimNode(nnkNilLit), newNimNode(nnkNilLit),
-                         newNimNode(nnkNilLit), newNimNode(nnkNilLit),
-                         newLit(0))
-               )
+    result = newTree(nnkStmtListExpr,
+               newCall(dispatchId, conn, statement, newLit 0,
+                       newNimNode(nnkNilLit), newNimNode(nnkNilLit),
+                       newNimNode(nnkNilLit), newNimNode(nnkNilLit),
+                       newLit(0))
+             )
   else:
     result = newTree(nnkStmtListExpr)
 
@@ -955,32 +973,26 @@ macro exec*(conn: apgConnection|apgPool, statement: string,
           showError("Argument's type is not supported", param)
       inc(idx)
 
-    if getTypeInst(conn).strVal == "apgConnection":
-      result.add(
-        valuesArray, typesArray, lensArray, formatsArray,
-        #newEchoVar(valuesName), newEchoVar(typesName),
-        #newEchoVar(lensName), newEchoVar(formatsName),
-        newVarExec(execResultVar,
-          newCall(bindSym"execAsync", conn, statement,
-                  newLit len(params), castPointer0(typesName, "POid"),
-                  castPointer0(valuesName, "cstringArray"),
-                  newAddr0(lensName), newAddr0(formatsName), newLit(0)))
-      )
-    else:
-      result.add(
-        valuesArray, typesArray, lensArray, formatsArray,
-        #newEchoVar(valuesName), newEchoVar(typesName),
-        #newEchoVar(lensName), newEchoVar(formatsName),
-        newVarExec(execResultVar,
-          newCall(bindSym"execPoolAsync", conn, statement,
-                  newLit len(params), castPointer0(typesName, "POid"),
-                  castPointer0(valuesName, "cstringArray"),
-                  newAddr0(lensName), newAddr0(formatsName), newLit(0)))
-      )
+    result.add(
+      valuesArray, typesArray, lensArray, formatsArray,
+      newVarExec(execResultVar,
+        newCall(dispatchId, conn, statement,
+                newLit len(params), castPointer0(typesName, "POid"),
+                castPointer0(valuesName, "cstringArray"),
+                newAddr0(lensName), newAddr0(formatsName), newLit(0)))
+    )
     for child in postNodes.children:
       result.add(child)
     result.add(execResultVar)
-    #echo(toStrLit(result))
+
+macro exec*(conn: typed, statement: string,
+            params: varargs[typed]): apgResult =
+  ## Submits a command ``statement`` to the server connection
+  ## or connection's pool. ``params`` is SQL parameters which will
+  ## be passed with command.
+  result = newCall(bindSym"apgExecImpl", newLit"execDispatch", conn, statement)
+  for p in params:
+    result.add(p)
 
 #
 # Asynchronous notify
@@ -1078,7 +1090,11 @@ proc notify*(conn: apgConnection|apgPool, channel: string): NotifyWait =
 proc waitNotify*(w: NotifyWait): apgNotify {.flow.} =
   ## Block until the NOTIFY registered by `notify` arrives.
   while not w.arrived:
-    park(w.q)
+    # Snapshot the epoch before re-checking `arrived`: a notify from another thread
+    # between the check and the park bumps it, so `parkSince` returns immediately.
+    let e = epochOf(w.q)
+    if not w.arrived:
+      parkSince(w.q, e)
   return w.ntf
 
 #

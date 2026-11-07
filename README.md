@@ -45,7 +45,22 @@ $ atlas install
 - Nim 2.2+ (`requires "nim >= 2.2.0"`)
 - [stagelane](https://github.com/ghazalialshafi/stagelane), vendored by Atlas from its git repository (`atlas install`)
 
-This driver uses stagelane’s POSIX event loop (`waitReadable` / `waitWritable` on the libpq socket). Each connection, pool, and task stays on the thread that created it; see [Threads](#threads).
+This driver uses stagelane’s POSIX event loop (`waitReadable` / `waitWritable` on the libpq socket). Each connection, `apgPool`, and task stays on the thread that created it; only `apgSharedPool` can be shared across threads. See [Pool implementations](#pool-implementations) and [Threads](#threads).
+
+## Pool implementations
+
+asyncpg-stagelane has two connection pools:
+
+| | `apgPool` | `apgSharedPool` |
+|---|---|---|
+| Intended use | Single-threaded: one pool per OS thread | Multi-threaded: one pool shared by tasks on many OS threads |
+| Import | `asyncpg_stagelane` | `asyncpg_stagelane/apg_shared_pool` |
+| Create | `newPool(size)` | `newSharedPool(size)` |
+| Locking | None (no overhead) | Internal lock around pool bookkeeping |
+| Build flags | Default | `--threads:on --mm:atomicArc -d:flowThreads` |
+| Close | `close(pool)` | `close(pool)` (graceful: idle connections closed now, busy ones at checkin) |
+
+Both support `connect`, `exec`, `withConnection`, `listenNotify` / `sendNotify` / `notify`. Each connection is still used by one task at a time. Choose `apgPool` unless you need to share a pool across threads. See [Threads](#threads) for details and [docs/shared-pool-flowthreads.md](docs/shared-pool-flowthreads.md) for why the shared pool needs `-d:flowThreads`.
 
 ## Integration tests
 
@@ -135,14 +150,40 @@ proc waitOnce(conn: apgConnection) {.flow.} =
 
 Many OS threads can use the driver at once. Each thread owns the objects it creates. `apgPool` keeps its slot flags, wait queue, and notify list without locks, and libpq allows only one thread to use a given `PGconn` at a time. The stagelane scheduler is thread-local: `run` drives that thread’s event loop, and a socket wait is registered only on that loop.
 
-Keep all of these on the thread that created them, and close connections and pools before that thread returns:
+### Shared pool across threads (`apgSharedPool`)
+
+To check out connections from one pool on several OS threads, import [`asyncpg_stagelane/apg_shared_pool`](asyncpg_stagelane/apg_shared_pool.nim) and build with `--threads:on --mm:atomicArc -d:flowThreads`. Stagelane must route task wakeups across threads in this mode; plain ARC/ORC is not enough for handles that cross thread boundaries.
+
+Each `PGconn` still has a single borrower at a time: checkout hands a connection to one task, checkin returns it. Socket waits run on the borrowing thread and are cleared before checkin, so the next borrower may be on another thread. Do not stash an `apgConnection` from `withConnection` past the end of the block.
+
+On checkin, connections that are broken or not idle at the SQL session level (open transaction, etc.) are dropped and replaced lazily on the next checkout. `close(pool)` marks the pool closed, fails new checkouts, closes idle slots immediately, and closes busy slots when they are returned.
+
+`listenNotify` on a pool still runs `LISTEN` on only the connection checked out for that call; other slots are unaffected.
+
+```nim
+import asyncpg_stagelane/apg_shared_pool
+
+proc work(pool: apgSharedPool) {.flow.} =
+  var res = exec(pool, "SELECT 1")
+  defer: close(res)
+
+proc worker(pool: apgSharedPool) {.gcsafe.} =
+  {.cast(gcsafe).}:
+    run work(pool)
+
+let pool = newSharedPool(4)
+run pool.connect(connStr)
+# share `pool` with malebolgia / createThread workers, then close(pool)
+```
+
+Keep all of these on the thread that created them, and close connections and pools before that thread returns (for plain `apgPool` / `apgConnection` — not `apgSharedPool`, which is designed to be shared):
 
 * `apgConnection` and `apgPool`, including every connection stored in the pool
 * `apgResult`
 * `NotifyWait`
 * stagelane `Task` handles (`await`, `waitDone`, `waitFor`)
 
-This driver leaves `-d:flowThreads` unused: it never posts a connection, pool, or task to another scheduler.
+`apgPool` and `apgConnection` leave `-d:flowThreads` unused: they never post a connection, pool, or task to another scheduler. Only `apgSharedPool` requires it.
 
 Pass a connection string into the worker and open the pool inside `run`. `run` is not `{.gcsafe.}`, so a spawn proc (`createThread`, malebolgia, and similar) needs a narrow cast around that call:
 
