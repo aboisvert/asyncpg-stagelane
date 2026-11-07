@@ -45,13 +45,13 @@ $ atlas install
 - Nim 2.2+ (`requires "nim >= 2.2.0"`)
 - [stagelane](https://github.com/ghazalialshafi/stagelane), vendored by Atlas from its git repository (`atlas install`)
 
-This driver uses stagelane’s POSIX event loop (`waitReadable` / `waitWritable` on the libpq socket). Each connection, `apgPool`, and task stays on the thread that created it; only `apgSharedPool` can be shared across threads. See [Pool implementations](#pool-implementations) and [Threads](#threads).
+This driver uses stagelane’s POSIX event loop (`waitReadable` / `waitWritable` on the libpq socket). Each connection, `ApgPool`, and task stays on the thread that created it; only `ApgSharedPool` can be shared across threads. See [Pool implementations](#pool-implementations) and [Threads](#threads).
 
 ## Pool implementations
 
 asyncpg-stagelane has two connection pools:
 
-| | `apgPool` | `apgSharedPool` |
+| | `ApgPool` | `ApgSharedPool` |
 |---|---|---|
 | Intended use | Single-threaded: one pool per OS thread | Multi-threaded: one pool shared by tasks on many OS threads |
 | Import | `asyncpg_stagelane` | `asyncpg_stagelane/apg_shared_pool` |
@@ -60,7 +60,7 @@ asyncpg-stagelane has two connection pools:
 | Build flags | Default | `--threads:on --mm:atomicArc -d:flowThreads` |
 | Close | `close(pool)` | `close(pool)` (graceful: idle connections closed now, busy ones at checkin) |
 
-Both support `connect`, `exec`, `withConnection`, `listenNotify` / `sendNotify` / `notify`. Each connection is still used by one task at a time. Choose `apgPool` unless you need to share a pool across threads. See [Threads](#threads) for details and [docs/shared-pool-flowthreads.md](docs/shared-pool-flowthreads.md) for why the shared pool needs `-d:flowThreads`.
+Both support `connect`, `exec`, `withConnection`, `listenNotify` / `sendNotify` / `notify`. Each connection is still used by one task at a time. Choose `ApgPool` unless you need to share a pool across threads. See [Threads](#threads) for details and [docs/shared-pool-flowthreads.md](docs/shared-pool-flowthreads.md) for why the shared pool needs `-d:flowThreads`.
 
 ## Integration tests
 
@@ -123,11 +123,11 @@ run app("host=... port=5432 dbname=... user=... password=...")
 Overlapping queries use `go` and `await` on `Task` handles:
 
 ```nim
-proc long(pool: apgPool) {.flow.} =
+proc long(pool: ApgPool) {.flow.} =
   var r = exec(pool, "SELECT pg_sleep(1);")
   close(r)
 
-proc main(pool: apgPool) {.flow.} =
+proc main(pool: ApgPool) {.flow.} =
   let t = go long(pool)
   # ... other work ...
   await t
@@ -138,7 +138,7 @@ run main(myPool)
 LISTEN/NOTIFY: register a waiter with `notify`, send with `sendNotify`, then wait in a child task and use `waitFor` for a timeout (same pattern as the integration tests):
 
 ```nim
-proc waitOnce(conn: apgConnection) {.flow.} =
+proc waitOnce(conn: ApgConnection) {.flow.} =
   listenNotify(conn, "ch")
   let w = notify(conn, "ch")
   sendNotify(conn, "ch", "hello")
@@ -148,13 +148,13 @@ proc waitOnce(conn: apgConnection) {.flow.} =
 
 ## Threads
 
-Many OS threads can use the driver at once. Each thread owns the objects it creates. `apgPool` keeps its slot flags, wait queue, and notify list without locks, and libpq allows only one thread to use a given `PGconn` at a time. The stagelane scheduler is thread-local: `run` drives that thread’s event loop, and a socket wait is registered only on that loop.
+Many OS threads can use the driver at once. Each thread owns the objects it creates. `ApgPool` keeps its slot flags, wait queue, and notify list without locks, and libpq allows only one thread to use a given `PGconn` at a time. The stagelane scheduler is thread-local: `run` drives that thread’s event loop, and a socket wait is registered only on that loop.
 
-### Shared pool across threads (`apgSharedPool`)
+### Shared pool across threads (`ApgSharedPool`)
 
 To check out connections from one pool on several OS threads, import [`asyncpg_stagelane/apg_shared_pool`](asyncpg_stagelane/apg_shared_pool.nim) and build with `--threads:on --mm:atomicArc -d:flowThreads`. Stagelane must route task wakeups across threads in this mode; plain ARC/ORC is not enough for handles that cross thread boundaries.
 
-Each `PGconn` still has a single borrower at a time: checkout hands a connection to one task, checkin returns it. Socket waits run on the borrowing thread and are cleared before checkin, so the next borrower may be on another thread. Do not stash an `apgConnection` from `withConnection` past the end of the block.
+Each `PGconn` still has a single borrower at a time: checkout hands a connection to one task, checkin returns it. Socket waits run on the borrowing thread and are cleared before checkin, so the next borrower may be on another thread. Do not stash an `ApgConnection` from `withConnection` past the end of the block.
 
 On checkin, connections that are broken or not idle at the SQL session level (open transaction, etc.) are dropped and replaced lazily on the next checkout. `close(pool)` marks the pool closed, fails new checkouts, closes idle slots immediately, and closes busy slots when they are returned.
 
@@ -163,11 +163,11 @@ On checkin, connections that are broken or not idle at the SQL session level (op
 ```nim
 import asyncpg_stagelane/apg_shared_pool
 
-proc work(pool: apgSharedPool) {.flow.} =
+proc work(pool: ApgSharedPool) {.flow.} =
   var res = exec(pool, "SELECT 1")
   defer: close(res)
 
-proc worker(pool: apgSharedPool) {.gcsafe.} =
+proc worker(pool: ApgSharedPool) {.gcsafe.} =
   {.cast(gcsafe).}:
     run work(pool)
 
@@ -176,14 +176,14 @@ run pool.connect(connStr)
 # share `pool` with malebolgia / createThread workers, then close(pool)
 ```
 
-Keep all of these on the thread that created them, and close connections and pools before that thread returns (for plain `apgPool` / `apgConnection` — not `apgSharedPool`, which is designed to be shared):
+Keep all of these on the thread that created them, and close connections and pools before that thread returns (for plain `ApgPool` / `ApgConnection` — not `ApgSharedPool`, which is designed to be shared):
 
-* `apgConnection` and `apgPool`, including every connection stored in the pool
-* `apgResult`
+* `ApgConnection` and `ApgPool`, including every connection stored in the pool
+* `ApgResult`
 * `NotifyWait`
 * stagelane `Task` handles (`await`, `waitDone`, `waitFor`)
 
-`apgPool` and `apgConnection` leave `-d:flowThreads` unused: they never post a connection, pool, or task to another scheduler. Only `apgSharedPool` requires it.
+`ApgPool` and `ApgConnection` leave `-d:flowThreads` unused: they never post a connection, pool, or task to another scheduler. Only `ApgSharedPool` requires it.
 
 Pass a connection string into the worker and open the pool inside `run`. `run` is not `{.gcsafe.}`, so a spawn proc (`createThread`, malebolgia, and similar) needs a narrow cast around that call:
 
@@ -204,7 +204,7 @@ Nim strings, integers, and other values already copied out of a result (`getValu
 
 Each thread has its own timer wheel, so `waitFor` only sees that thread. Under load from many OS threads it can time out while the task is still running. Use `waitDone` when the task has to finish, and put the wall-clock cap on the thread pool (malebolgia’s `createMaster` timeout, for example).
 
-On one thread, a connection runs one libpq operation at a time. A second `exec`, `reset`, `copyTo`, or `copyFromInto` on the same `apgConnection` while another is suspended is undefined: the scheduler accepts one reader and one writer per socket, and libpq will not run two commands on one connection. Overlap queries through the pool. `exec` on a pool and `withConnection` each check out one slot, and several `go` tasks may share that pool, up to its size. Finish those tasks before `close`. A connection taken with `withConnection` stays inside that block.
+On one thread, a connection runs one libpq operation at a time. A second `exec`, `reset`, `copyTo`, or `copyFromInto` on the same `ApgConnection` while another is suspended is undefined: the scheduler accepts one reader and one writer per socket, and libpq will not run two commands on one connection. Overlap queries through the pool. `exec` on a pool and `withConnection` each check out one slot, and several `go` tasks may share that pool, up to its size. Finish those tasks before `close`. A connection taken with `withConnection` stays inside that block.
 
 `notify` / `waitNotify` park on that same thread. Payloads are read only while the listening connection is inside `exec` or COPY, so a waiter makes progress only when that connection is running an operation. `listenNotify` on a pool issues `LISTEN` on the one connection it checks out, so the other slots in the pool are not listening.
 

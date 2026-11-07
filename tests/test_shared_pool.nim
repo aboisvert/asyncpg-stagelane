@@ -1,4 +1,4 @@
-## Integration test for `apgSharedPool`: one pool shared across OS threads.
+## Integration test for `ApgSharedPool`: one pool shared across OS threads.
 ## Requires `-d:flowThreads --mm:atomicArc` (see test_shared_pool.nims).
 import std/[strutils, times]
 import stagelane
@@ -14,23 +14,23 @@ const
   SharedCounterTable = "shp_shared_ctr"
   NotifyChannel = "shp_ntf_ch"
 
-var workerPool: apgSharedPool
+var workerPool: ApgSharedPool
 
-proc burstOne(pool: apgSharedPool; ii: int) {.flow.} =
+proc burstOne(pool: ApgSharedPool; ii: int) {.flow.} =
   var res = exec(pool, "SELECT $1::int", ii)
   let got = parseInt(getValue(res[0]))
   close(res)
   if got != ii:
     raise newException(ValueError, "burst wrong int")
 
-proc burstWork(pool: apgSharedPool) {.flow.} =
+proc burstWork(pool: ApgSharedPool) {.flow.} =
   var tasks = newSeq[Task[void]](BurstTasks)
   for i in 0 ..< BurstTasks:
     tasks[i] = go burstOne(pool, i)
   for t in tasks:
     waitDone(t)
 
-proc setupSharedCounter(pool: apgSharedPool) {.flow.} =
+proc setupSharedCounter(pool: ApgSharedPool) {.flow.} =
   var r = exec(pool, "DROP TABLE IF EXISTS " & SharedCounterTable)
   close(r)
   r = exec(pool,
@@ -39,7 +39,7 @@ proc setupSharedCounter(pool: apgSharedPool) {.flow.} =
   r = exec(pool, "INSERT INTO " & SharedCounterTable & " VALUES (1, 0)")
   close(r)
 
-proc bumpSharedCounter(pool: apgSharedPool) {.flow.} =
+proc bumpSharedCounter(pool: ApgSharedPool) {.flow.} =
   for i in 0 ..< IncsPerWorker:
     withConnection(pool, conn) do:
       var r1 = exec(conn, "BEGIN")
@@ -49,28 +49,28 @@ proc bumpSharedCounter(pool: apgSharedPool) {.flow.} =
       var r3 = exec(conn, "COMMIT")
       close(r3)
 
-proc verifySharedCounter(pool: apgSharedPool; expect: int) {.flow.} =
+proc verifySharedCounter(pool: ApgSharedPool; expect: int) {.flow.} =
   var r = exec(pool, "SELECT n FROM " & SharedCounterTable & " WHERE id = 1")
   let n = parseInt(getValue(r[0]))
   close(r)
   if n != expect:
     raise newException(ValueError, "counter expected " & $expect & " got " & $n)
 
-proc leakOpenTxn(pool: apgSharedPool) {.flow.} =
+proc leakOpenTxn(pool: ApgSharedPool) {.flow.} =
   withConnection(pool, conn) do:
     var r = exec(conn, "BEGIN")
     close(r)
 
-proc assertCanQuery(pool: apgSharedPool) {.flow.} =
+proc assertCanQuery(pool: ApgSharedPool) {.flow.} =
   var r = exec(pool, "SELECT 1")
   close(r)
 
-proc holdConnBriefly(pool: apgSharedPool) {.flow.} =
+proc holdConnBriefly(pool: ApgSharedPool) {.flow.} =
   withConnection(pool, conn) do:
     var res = exec(conn, "SELECT pg_sleep(0.15)")
     close(res)
 
-proc testGracefulClose(pool: apgSharedPool) {.flow.} =
+proc testGracefulClose(pool: ApgSharedPool) {.flow.} =
   let t = go holdConnBriefly(pool)
   yieldNow()
   close(pool)
@@ -78,21 +78,21 @@ proc testGracefulClose(pool: apgSharedPool) {.flow.} =
   try:
     discard checkout(pool)
     raise newException(AssertionDefect, "checkout after close should raise")
-  except apgSharedPoolClosedError:
+  except ApgSharedPoolClosedError:
     discard
 
-proc senderNotify(pool: apgSharedPool) {.flow.} =
+proc senderNotify(pool: ApgSharedPool) {.flow.} =
   for i in 0 ..< 20:
     yieldNow()
   pool.sendNotify(NotifyChannel, "cross")
 
 proc bumpThreadMain(pool: pointer) {.thread, nimcall.} =
   {.cast(gcsafe).}:
-    run bumpSharedCounter(cast[apgSharedPool](pool))
+    run bumpSharedCounter(cast[ApgSharedPool](pool))
 
 proc senderThreadMain(pool: pointer) {.thread, nimcall.} =
   {.cast(gcsafe).}:
-    run senderNotify(cast[apgSharedPool](pool))
+    run senderNotify(cast[ApgSharedPool](pool))
 
 proc main() =
   workerPool = newSharedPool(PoolSize)

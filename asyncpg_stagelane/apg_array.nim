@@ -15,7 +15,7 @@ when defined(windows) and defined(gcc):
   {.passC:"-mno-ms-bitfields".}
 
 type
-  pgArray*[T] = object
+  PgArray*[T] = object
     p: pointer
     size: int
     swap: bool
@@ -27,7 +27,7 @@ type
 proc `+`(p: pointer, i: uint|int): pointer {.inline.} =
   cast[pointer](cast[uint](p) + i.uint)
 
-proc newPgArray*[T](x: openarray[T], swap = false): pgArray[T] =
+proc newPgArray*[T](x: openarray[T], swap = false): PgArray[T] =
   var oid: int32 = 0
   var sw = swap
   when (T is int16) or (T is uint16):
@@ -90,7 +90,7 @@ proc newPgArray*[T](x: openarray[T], swap = false): pgArray[T] =
       copyMem(d, addr ss[0], ml)
       d = d + ml
       inc(i)
-    result = pgArray[T](p: p, size: size, swap: swap)
+    result = PgArray[T](p: p, size: size, swap: swap)
   else:
     var size = sizeof(pgArrayElement[T]) * len(x) + 20
     var p = alloc(size)
@@ -115,12 +115,12 @@ proc newPgArray*[T](x: openarray[T], swap = false): pgArray[T] =
         d[idx].size = prepare(sizeof(T).int32)
         d[idx].value = x[idx]
         inc(idx)
-    result = pgArray[T](p: p, size: size, swap: swap)
+    result = PgArray[T](p: p, size: size, swap: swap)
 
-proc raw*[T](pga: pgArray[T]): pointer =
+proc raw*[T](pga: PgArray[T]): pointer =
   result = pga.p
 
-proc `$`*[T](pga: pgArray[T]): string =
+proc `$`*[T](pga: PgArray[T]): string =
   var h = cast[ptr UncheckedArray[int32]](pga.p)
   result = "PGARRAY at 0x" & toHex(cast[int](pga.p), sizeof(int) * 2) & "\n"
   result &= "header = [ndim = " & $prepare(h[0]) & ", "
@@ -167,12 +167,12 @@ proc `$`*[T](pga: pgArray[T]): string =
   result &= "data = [" & $r & "]\n"
   result &= "total length in bytes = " & $pga.size
 
-proc size*[T](pga: pgArray[T]): int =
+proc size*[T](pga: PgArray[T]): int =
   result = pga.size
 
-proc len*[T](pga: pgArray[T]): int =
+proc len*[T](pga: PgArray[T]): int =
   var h = cast[ptr UncheckedArray[int32]](pga.p)
   result = h[3].int
 
-proc free*[T](pga: pgArray[T]) =
+proc free*[T](pga: PgArray[T]) =
   dealloc(pga.p)

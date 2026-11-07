@@ -2,15 +2,15 @@ import stagelane, asyncpg_stagelane, test_db
 
 const POOL_SIZE = 20
 
-proc makeLongCall(pool: apgPool) {.flow.} =
+proc makeLongCall(pool: ApgPool) {.flow.} =
   var res = exec(pool, "SELECT pg_sleep(1);")
   close(res)
 
-proc makeShortCall(pool: apgPool) {.flow.} =
+proc makeShortCall(pool: ApgPool) {.flow.} =
   var res = exec(pool, "SELECT pg_sleep(0.5);")
   close(res)
 
-proc testPool(pool: apgPool): bool {.flow.} =
+proc testPool(pool: ApgPool): bool {.flow.} =
   result = false
   var i = 0
   var tasks = newSeq[Task[void]](POOL_SIZE)
@@ -30,7 +30,7 @@ proc testPool(pool: apgPool): bool {.flow.} =
   if k == POOL_SIZE:
     result = true
 
-proc testWithConnection(apgP: apgPool): bool {.flow.} =
+proc testWithConnection(apgP: ApgPool): bool {.flow.} =
   result = true
 
   withConnection(apgP, conn) do:

@@ -1,7 +1,7 @@
 import stagelane, asyncpg_stagelane, test_db
 import torture_lib
 
-proc main(conn: apgConnection) {.flow.} =
+proc main(conn: ApgConnection) {.flow.} =
   let knobs = defaultTortureKnobs()
   let p = newPool(knobs.poolSize)
   connect(p, connStr)

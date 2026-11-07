@@ -1,6 +1,6 @@
 import stagelane, asyncpg_stagelane, json, test_db
 
-proc testTypes(conn: apgConnection) {.flow.} =
+proc testTypes(conn: ApgConnection) {.flow.} =
   block: # empty parameters test
     var res = asyncpg_stagelane.exec(conn, "SELECT 3;")
     var value = getValue(res[0])

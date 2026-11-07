@@ -34,27 +34,27 @@ proc withTimeout*(t: TaskBase, knobs: TortureKnobs, scenario: string) =
   if not waitFor(t, knobs.globalTimeoutMs):
     raise newException(ValueError, "timeout: " & scenario)
 
-proc selInt1*(pool: apgPool, q: string, a: int): int {.flow.} =
+proc selInt1*(pool: ApgPool, q: string, a: int): int {.flow.} =
   var res = exec(pool, q, a)
   result = parseInt(getValue(res[0]))
   close(res)
 
-proc selInt0*(pool: apgPool, q: string): int {.flow.} =
+proc selInt0*(pool: ApgPool, q: string): int {.flow.} =
   var res = exec(pool, q)
   result = parseInt(getValue(res[0]))
   close(res)
 
-proc selOptText*(pool: apgPool, q: string): string {.flow.} =
+proc selOptText*(pool: ApgPool, q: string): string {.flow.} =
   var res = exec(pool, q)
   result = getValue(res[0])
   close(res)
 
-proc saturationWorker(pool: apgPool, knobs: TortureKnobs, expected: int) {.flow.} =
+proc saturationWorker(pool: ApgPool, knobs: TortureKnobs, expected: int) {.flow.} =
   let got = selInt1(pool, "SELECT $1::int", expected)
   if got != expected:
     raise newException(ValueError, "saturation wrong value")
 
-proc runSaturation*(pool: apgPool, knobs: TortureKnobs) {.flow.} =
+proc runSaturation*(pool: ApgPool, knobs: TortureKnobs) {.flow.} =
   var tasks = newSeq[Task[void]](knobs.saturationTasks)
   for i in 0 ..< knobs.saturationTasks:
     tasks[i] = go saturationWorker(pool, knobs, i + 1)
@@ -68,7 +68,7 @@ type
 proc newPidSeen(): PidSeen =
   PidSeen(cur: initHashSet[int]())
 
-proc pidOnceWorker(seen: PidSeen, pool: apgPool, knobs: TortureKnobs) {.flow.} =
+proc pidOnceWorker(seen: PidSeen, pool: ApgPool, knobs: TortureKnobs) {.flow.} =
   let pid = selInt0(pool, "SELECT pg_backend_pid()::int")
   if pid in seen.cur:
     raise newException(ValueError, "pid overlap / double checkout")
@@ -79,7 +79,7 @@ proc pidOnceWorker(seen: PidSeen, pool: apgPool, knobs: TortureKnobs) {.flow.} =
     close(res)
   seen.cur.excl(pid)
 
-proc runPidUniqueness*(pool: apgPool, knobs: TortureKnobs) {.flow.} =
+proc runPidUniqueness*(pool: ApgPool, knobs: TortureKnobs) {.flow.} =
   let seen = newPidSeen()
   var tasks = newSeq[Task[void]](knobs.saturationTasks)
   for i in 0 ..< knobs.saturationTasks:
@@ -87,7 +87,7 @@ proc runPidUniqueness*(pool: apgPool, knobs: TortureKnobs) {.flow.} =
   for t in tasks:
     waitDone(t)
 
-proc errStormWorker(pool: apgPool, knobs: TortureKnobs, i: int) {.flow.} =
+proc errStormWorker(pool: ApgPool, knobs: TortureKnobs, i: int) {.flow.} =
   if i mod 4 == 0:
     try:
       var res = exec(pool, "SELECT 1 / 0")
@@ -100,7 +100,7 @@ proc errStormWorker(pool: apgPool, knobs: TortureKnobs, i: int) {.flow.} =
     if got != i:
       raise newException(ValueError, "errStorm bad value")
 
-proc runErrStorm*(pool: apgPool, knobs: TortureKnobs) {.flow.} =
+proc runErrStorm*(pool: ApgPool, knobs: TortureKnobs) {.flow.} =
   var tasks = newSeq[Task[void]](knobs.errStormTasks)
   for i in 0 ..< knobs.errStormTasks:
     tasks[i] = go errStormWorker(pool, knobs, i)
@@ -111,13 +111,13 @@ proc runErrStorm*(pool: apgPool, knobs: TortureKnobs) {.flow.} =
   if selOptText(pool, "SELECT txid_current_if_assigned()::text") != "":
     raise newException(ValueError, "aborted xact leaked")
 
-proc sleepForever(pool: apgPool, knobs: TortureKnobs) {.flow.} =
+proc sleepForever(pool: ApgPool, knobs: TortureKnobs) {.flow.} =
   block:
     let dur = knobs.cancelHolderSleepSec
     var res = exec(pool, "SELECT pg_sleep($1)", dur)
     close(res)
 
-proc runCancelHolders*(pool: apgPool, knobs: TortureKnobs) {.flow.} =
+proc runCancelHolders*(pool: ApgPool, knobs: TortureKnobs) {.flow.} =
   var holders = newSeq[Task[void]](knobs.poolSize)
   for i in 0 ..< knobs.poolSize:
     holders[i] = go sleepForever(pool, knobs)
@@ -132,17 +132,17 @@ proc runCancelHolders*(pool: apgPool, knobs: TortureKnobs) {.flow.} =
   if selInt0(pool, "SELECT 1") != 1:
     raise newException(ValueError, "cancel holders: pool dead")
 
-proc shortQuery(pool: apgPool) {.flow.} =
+proc shortQuery(pool: ApgPool) {.flow.} =
   var res = exec(pool, "SELECT 1")
   close(res)
 
-proc holdSlot(pool: apgPool, knobs: TortureKnobs) {.flow.} =
+proc holdSlot(pool: ApgPool, knobs: TortureKnobs) {.flow.} =
   block:
     let dur = knobs.holderSleepSec
     var res = exec(pool, "SELECT pg_sleep($1)", dur)
     close(res)
 
-proc runCancelWaiters*(pool: apgPool, knobs: TortureKnobs) {.flow.} =
+proc runCancelWaiters*(pool: ApgPool, knobs: TortureKnobs) {.flow.} =
   var holders = newSeq[Task[void]](knobs.poolSize)
   for i in 0 ..< knobs.poolSize:
     holders[i] = go holdSlot(pool, knobs)
@@ -165,7 +165,7 @@ proc runCancelWaiters*(pool: apgPool, knobs: TortureKnobs) {.flow.} =
   if selInt0(pool, "SELECT 2") != 2:
     raise newException(ValueError, "cancel waiters: pool dead")
 
-proc bumpCounter(pool: apgPool, knobs: TortureKnobs) {.flow.} =
+proc bumpCounter(pool: ApgPool, knobs: TortureKnobs) {.flow.} =
   withConnection(pool, conn) do:
     var r1 = exec(conn, "BEGIN")
     close(r1)
@@ -175,7 +175,7 @@ proc bumpCounter(pool: apgPool, knobs: TortureKnobs) {.flow.} =
     var r3 = exec(conn, "COMMIT")
     close(r3)
 
-proc runCounter*(pool: apgPool, knobs: TortureKnobs) {.flow.} =
+proc runCounter*(pool: ApgPool, knobs: TortureKnobs) {.flow.} =
   block:
     var res = exec(pool, "DROP TABLE IF EXISTS " & knobs.counterTable)
     close(res)
@@ -199,7 +199,7 @@ proc runCounter*(pool: apgPool, knobs: TortureKnobs) {.flow.} =
     var res = exec(pool, "DROP TABLE IF EXISTS " & knobs.counterTable)
     close(res)
 
-proc noiseWorker(pool: apgPool, knobs: TortureKnobs) {.flow.} =
+proc noiseWorker(pool: ApgPool, knobs: TortureKnobs) {.flow.} =
   var k = 0
   while k < knobs.noiseStopAfter:
     discard selInt1(pool, "SELECT $1::int", k)
@@ -210,7 +210,7 @@ proc recvPayload(w: NotifyWait, expected: string) {.flow.} =
   if n.payload != expected:
     raise newException(ValueError, "notify payload mismatch")
 
-proc runNotifyStress*(conn: apgConnection, pool: apgPool, knobs: TortureKnobs) {.flow.} =
+proc runNotifyStress*(conn: ApgConnection, pool: ApgPool, knobs: TortureKnobs) {.flow.} =
   let noise = go noiseWorker(pool, knobs)
   listenNotify(conn, knobs.notifyChannel)
   block:
@@ -246,7 +246,7 @@ proc runNotifyStress*(conn: apgConnection, pool: apgPool, knobs: TortureKnobs) {
   cancel(noise.TaskBase)
   waitDone(noise)
 
-proc runTortureSuite*(conn: apgConnection, pool: apgPool, knobs: TortureKnobs;
+proc runTortureSuite*(conn: ApgConnection, pool: ApgPool, knobs: TortureKnobs;
     innerTimeouts = true) {.flow.} =
   ## When `innerTimeouts` is true (single-threaded `test_torture`), each scenario is
   ## wrapped in `withTimeout` so a lost wakeup fails fast. When false (e.g.

@@ -1,6 +1,6 @@
 import stagelane, asyncpg_stagelane, test_db
 
-proc testRows(conn: apgConnection) {.flow.} =
+proc testRows(conn: ApgConnection) {.flow.} =
   block: # multiple statements in one query test
     var res = asyncpg_stagelane.exec(conn, "SELECT 3;SELECT 4;SELECT 5;")
     var length = len(res)

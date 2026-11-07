@@ -28,21 +28,21 @@ type
     ssBusy       ## checked out by a task
     ssConnecting ## reserved by a task that is opening the connection (lock not held)
 
-  apgSharedPoolClosedError* = object of CatchableError
+  ApgSharedPoolClosedError* = object of CatchableError
     ## Raised by `checkout`/`connect` once the pool has been closed.
 
-  apgSharedPool* = ref object of RootRef
+  ApgSharedPool* = ref object of RootRef
     ## Connection pool that may be shared by tasks on several OS threads.
     lock: Lock                 ## guards every field below
-    connections*: seq[apgConnection] ## slot storage; only touch the slot you checked out
+    connections*: seq[ApgConnection] ## slot storage; only touch the slot you checked out
     state: seq[SlotState]      ## per-slot state, parallel to `connections`
     waitq: WaitQueue           ## tasks waiting for a free slot (see `checkout`)
     connStr: string
-    notifies: DoublyLinkedList[apgNotifyCell] ## pending `notify` registrations
+    notifies: DoublyLinkedList[ApgNotifyCell] ## pending `notify` registrations
     closed: bool               ## set by `close`; new checkouts fail
     lockReleased: bool         ## `lock` was deinitialised; the pool is unusable
 
-template withPoolLock(pool: apgSharedPool, body: untyped) =
+template withPoolLock(pool: ApgSharedPool, body: untyped) =
   ## Run `body` holding `pool.lock`. Never suspend (park/await/connect/exec) inside it.
   acquire(pool.lock)
   try:
@@ -50,10 +50,10 @@ template withPoolLock(pool: apgSharedPool, body: untyped) =
   finally:
     release(pool.lock)
 
-proc connectionHealthy(conn: apgConnection): bool =
+proc connectionHealthy(conn: ApgConnection): bool =
   conn != nil and pgconn(conn) != nil and pqstatus(pgconn(conn)) == CONNECTION_OK
 
-proc shouldDiscardConn(conn: apgConnection): bool =
+proc shouldDiscardConn(conn: ApgConnection): bool =
   ## A returned connection is only safe to hand to the next borrower when it is healthy
   ## and idle at the SQL level. An open transaction (or failed one) would leak state to
   ## whichever thread borrows it next, so such connections are dropped instead.
@@ -62,26 +62,26 @@ proc shouldDiscardConn(conn: apgConnection): bool =
   else:
     result = pqtransactionStatus(pgconn(conn)) != PQTRANS_IDLE
 
-proc discardConn(conn: var apgConnection) =
+proc discardConn(conn: var ApgConnection) =
   if conn != nil and pgconn(conn) != nil:
     close(conn)
   conn = nil
 
-proc newSharedPool*(size = 10): apgSharedPool =
+proc newSharedPool*(size = 10): ApgSharedPool =
   ## Creates a pool with `size` slots. Connections are opened by `connect` or lazily
   ## by `checkout` (for slots emptied by `checkin`).
   if pqisthreadsafe() == 0:
     raise newException(ValueError, "libpq was not built thread-safe")
-  result = apgSharedPool()
-  result.connections = newSeq[apgConnection](size)
+  result = ApgSharedPool()
+  result.connections = newSeq[ApgConnection](size)
   result.state = newSeq[SlotState](size)
   for i in 0 ..< size:
     result.state[i] = ssEmpty
   initLock(result.lock)
   result.waitq = newWaitQueue()
-  result.notifies = initDoublyLinkedList[apgNotifyCell]()
+  result.notifies = initDoublyLinkedList[ApgNotifyCell]()
 
-proc connect*(pool: apgSharedPool, connection: string) {.flow.} =
+proc connect*(pool: ApgSharedPool, connection: string) {.flow.} =
   ## Opens every slot's connection. The lock is only taken to publish each connection,
   ## not while connecting.
   pool.connStr = connection
@@ -91,12 +91,12 @@ proc connect*(pool: apgSharedPool, connection: string) {.flow.} =
     withPoolLock pool:
       if pool.closed:
         close(c)
-        raise newException(apgSharedPoolClosedError, "pool is closed")
+        raise newException(ApgSharedPoolClosedError, "pool is closed")
       pool.connections[i] = c
       pool.state[i] = ssIdle
     inc i
 
-proc checkout*(pool: apgSharedPool): int {.flow.} =
+proc checkout*(pool: ApgSharedPool): int {.flow.} =
   ## Returns the index of a connection reserved for the caller; suspends until a slot
   ## is free. Pair with `checkin` (prefer `withConnection`).
   while true:
@@ -108,7 +108,7 @@ proc checkout*(pool: apgSharedPool): int {.flow.} =
     var connStr = ""
     withPoolLock pool:
       if pool.closed:
-        raise newException(apgSharedPoolClosedError, "pool is closed")
+        raise newException(ApgSharedPoolClosedError, "pool is closed")
       var i = 0
       while i < pool.connections.len:
         if pool.state[i] == ssIdle:
@@ -140,7 +140,7 @@ proc checkout*(pool: apgSharedPool): int {.flow.} =
           if pool.closed:
             close(c)
             pool.state[connectIdx] = ssEmpty
-            raise newException(apgSharedPoolClosedError, "pool is closed")
+            raise newException(ApgSharedPoolClosedError, "pool is closed")
           pool.connections[connectIdx] = c
           pool.state[connectIdx] = ssBusy
           readyIdx = connectIdx
@@ -158,7 +158,7 @@ proc checkout*(pool: apgSharedPool): int {.flow.} =
       notifyOne(pool.waitq)
       raise
 
-proc checkin*(pool: apgSharedPool, index: int) =
+proc checkin*(pool: ApgSharedPool, index: int) =
   ## Returns slot `index` to the pool and wakes one waiter. Dirty or broken connections,
   ## and every connection once the pool is closed, are discarded rather than reused.
   withPoolLock pool:
@@ -171,18 +171,18 @@ proc checkin*(pool: apgSharedPool, index: int) =
       pool.state[index] = ssIdle
   notifyOne(pool.waitq)
 
-proc releasePoolLock(pool: apgSharedPool) =
+proc releasePoolLock(pool: ApgSharedPool) =
   if not pool.lockReleased:
     deinitLock(pool.lock)
     pool.lockReleased = true
 
-proc close*(pool: apgSharedPool) =
+proc close*(pool: ApgSharedPool) =
   ## Graceful close: marks the pool closed, closes idle connections now, wakes waiting
-  ## checkouts (they raise `apgSharedPoolClosedError`). Busy connections are closed by
+  ## checkouts (they raise `ApgSharedPoolClosedError`). Busy connections are closed by
   ## their `checkin`.
   if pool.lockReleased:
     return
-  var toClose: seq[apgConnection] = @[]
+  var toClose: seq[ApgConnection] = @[]
   withPoolLock pool:
     if pool.closed:
       discard
@@ -200,7 +200,7 @@ proc close*(pool: apgSharedPool) =
     notifyAll(pool.waitq)
   releasePoolLock(pool)
 
-template withConnection*(poolArg: apgSharedPool, conn, body: untyped) =
+template withConnection*(poolArg: ApgSharedPool, conn, body: untyped) =
   ## Checks out a connection into `conn` for the duration of `body`. The connection must
   ## not escape the block.
   mixin checkout, checkin
@@ -212,9 +212,9 @@ template withConnection*(poolArg: apgSharedPool, conn, body: untyped) =
     finally:
       checkin(poolArg, apgConnIdx)
 
-proc execSharedPoolAsync*(pool: apgSharedPool, statement: string, pN: int32,
+proc execSharedPoolAsync*(pool: ApgSharedPool, statement: string, pN: int32,
                          pT: POid, pV: cstringArray, pL, pF: ptr int32,
-                         rF: int32): apgResult {.flow.} =
+                         rF: int32): ApgResult {.flow.} =
   ## Runs one statement on a checked-out connection (target of the `exec` macro).
   let index = checkout(pool)
   try:
@@ -237,17 +237,17 @@ proc execSharedPoolAsync*(pool: apgSharedPool, statement: string, pN: int32,
 
 # `exec` is redefined here (rather than reusing apg_core's) so the pool type dispatches
 # to `execSharedPoolAsync`; parameter binding is shared via `apgExecImpl`.
-macro exec*(conn: apgSharedPool, statement: string,
-            params: varargs[typed]): apgResult =
+macro exec*(conn: ApgSharedPool, statement: string,
+            params: varargs[typed]): ApgResult =
   ## Same parameter binding as ``apg_core.exec``, dispatched to ``execSharedPoolAsync``.
   result = newCall(bindSym"apgExecImpl", newLit"execSharedPoolAsync", conn, statement)
   for p in params:
     result.add(p)
 
-# Re-declared for `apgConnection` so importing this module does not hide the plain
+# Re-declared for `ApgConnection` so importing this module does not hide the plain
 # connection overload of `exec`.
-macro exec*(conn: apgConnection, statement: string,
-            params: varargs[typed]): apgResult =
+macro exec*(conn: ApgConnection, statement: string,
+            params: varargs[typed]): ApgResult =
   result = newCall(bindSym"apgExecImpl", newLit"execDispatch", conn, statement)
   for p in params:
     result.add(p)
@@ -264,18 +264,18 @@ template checkResultTuple(res) =
   if sres != PGRES_TUPLES_OK:
     raise newException(ValueError, $pqerrorMessage(res[0].conn))
 
-proc listenNotify*(pool: apgSharedPool, channel: string) {.flow.} =
+proc listenNotify*(pool: ApgSharedPool, channel: string) {.flow.} =
   ## Issues `LISTEN` on the single connection checked out for this call.
   var query = "LISTEN \"" & channel & "\";"
   var res = exec(pool, query)
   checkResultCommand(res)
 
-proc unlistenNotify*(pool: apgSharedPool, channel: string) {.flow.} =
+proc unlistenNotify*(pool: ApgSharedPool, channel: string) {.flow.} =
   var query = "UNLISTEN \"" & channel & "\";"
   var res = exec(pool, query)
   checkResultCommand(res)
 
-proc sendNotify*(pool: apgSharedPool, channel: string,
+proc sendNotify*(pool: ApgSharedPool, channel: string,
                  payload: string) {.flow.} =
   doAssert(len(payload) < 8000)
   var p1 = channel
@@ -284,10 +284,10 @@ proc sendNotify*(pool: apgSharedPool, channel: string,
   var res = exec(pool, query, p1, p2)
   checkResultTuple(res)
 
-proc notify*(pool: apgSharedPool, channel: string): NotifyWait =
+proc notify*(pool: ApgSharedPool, channel: string): NotifyWait =
   ## Registers a waiter for `channel`; call `waitNotify` on the result. The registration
   ## is lock-protected because any thread's exec may deliver the NOTIFY.
-  var cell = apgNotifyCell()
+  var cell = ApgNotifyCell()
   var w = NotifyWait()
   w.channel = channel
   w.q = newWaitQueue()
@@ -298,6 +298,6 @@ proc notify*(pool: apgSharedPool, channel: string): NotifyWait =
   w
 
 export apg_core except exec
-export close, apgSharedPool, newSharedPool, connect, checkout, checkin,
+export close, ApgSharedPool, newSharedPool, connect, checkout, checkin,
   withConnection, listenNotify, unlistenNotify, sendNotify, notify, exec,
-  apgSharedPoolClosedError
+  ApgSharedPoolClosedError

@@ -15,14 +15,14 @@ type
   JsonB* = distinct JsonNode
   Json* = distinct JsonNode
 
-  pgJson = object
+  PgJson = object
     p: pointer
     size: int
 
 proc `+`(p: pointer, i: uint|int): pointer {.inline.} =
   cast[pointer](cast[uint](p) + i.uint)
 
-proc newPgJson*(n: JsonNode): pgJson =
+proc newPgJson*(n: JsonNode): PgJson =
   var s = $n
   var size = len(s) + 1
   var p = alloc(size)
@@ -30,12 +30,12 @@ proc newPgJson*(n: JsonNode): pgJson =
   var d = cast[pointer](p + 1)
   h[0] = 1'i8
   copyMem(d, addr(s[0]), len(s))
-  result = pgJson(p: p, size: size)
+  result = PgJson(p: p, size: size)
 
-proc raw*(pgj: pgJson): pointer =
+proc raw*(pgj: PgJson): pointer =
   result = pgj.p
 
-proc `$`*(pgj: pgJson): string =
+proc `$`*(pgj: PgJson): string =
   var h = cast[ptr UncheckedArray[int32]](pgj.p)
   result = "PGJSON at 0x" & toHex(cast[int](pgj.p), sizeof(int) * 2) & "\n"
   result &= "header = [version = " & $prepare(h[0]) & "]\n"
@@ -45,10 +45,10 @@ proc `$`*(pgj: pgJson): string =
   result &= "data = [" & $r & "]\n"
   result &= "total length in bytes = " & $pgj.size
 
-proc size*(pgj: pgJson):int =
+proc size*(pgj: PgJson):int =
   result = pgj.size
 
-proc free*(pgj: pgJson) =
+proc free*(pgj: PgJson) =
   dealloc(pgj.p)
 
 when isMainModule:

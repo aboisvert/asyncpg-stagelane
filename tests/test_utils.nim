@@ -1,20 +1,20 @@
 import stagelane, asyncpg_stagelane, test_db
 
-proc testEncoding(conn: apgConnection): bool {.flow.} =
+proc testEncoding(conn: ApgConnection): bool {.flow.} =
   result = false
   setClientEncoding(conn, "WIN1252")
   var s = getClientEncoding(conn)
   if s == "WIN1252":
     result = true
 
-proc testVersions(conn: apgConnection): bool =
+proc testVersions(conn: ApgConnection): bool =
   result = false
   if getVersion() > 0:
     if getServerVersion(conn) > 0:
       if getProtocolVersion(conn) > 0:
         result = true
 
-proc testEscape(conn: apgConnection): bool =
+proc testEscape(conn: ApgConnection): bool =
   var r1 = false
   var r2 = false
   var r3 = false
@@ -35,7 +35,7 @@ proc testEscape(conn: apgConnection): bool =
     inc(i)
   result = r1 and r2 and r3
 
-proc testCopy(conn: apgConnection): bool {.flow.} =
+proc testCopy(conn: ApgConnection): bool {.flow.} =
   result = false
   var inString = newString(80)
   var outString = "8\l8\l8\l8\l8\l8\l8\l8\l8\l8\l"

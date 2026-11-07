@@ -1,7 +1,7 @@
 ## Multi-threaded smoke test: malebolgia `spawn`s N workers on the pool; each worker
 ## runs `run burstWork(...)` so it gets its own stagelane scheduler thread-locally.
-## Never share an `apgPool` or `apgConnection` across OS threads (libpq and our pool
-## are not synchronized). For a thread-safe pool across workers, use `apgSharedPool`
+## Never share an `ApgPool` or `ApgConnection` across OS threads (libpq and our pool
+## are not synchronized). For a thread-safe pool across workers, use `ApgSharedPool`
 ## (`import asyncpg_stagelane/apg_shared_pool`; see `tests/test_shared_pool.nim`).
 ## `import malebolgia except cancel` avoids clashing with stagelane's task `cancel`.
 import std/[strutils, times]
@@ -15,7 +15,7 @@ const
   ## If workers deadlock, `awaitAll` raises after this wall-clock budget instead of hanging CI.
   MbBurstMasterTimeout = initDuration(minutes = 2)
 
-proc burstOne(pool: apgPool; ii: int) {.flow.} =
+proc burstOne(pool: ApgPool; ii: int) {.flow.} =
   var res = exec(pool, "SELECT $1::int", ii)
   let got = parseInt(getValue(res[0]))
   close(res)

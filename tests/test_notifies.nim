@@ -1,6 +1,6 @@
 import stagelane, asyncpg_stagelane, test_db
 
-proc testConnectionNotify(conn: apgConnection): bool {.flow.} =
+proc testConnectionNotify(conn: ApgConnection): bool {.flow.} =
   var r1 = false
   var r2 = false
   conn.listenNotify("testChannel")
@@ -15,7 +15,7 @@ proc testConnectionNotify(conn: apgConnection): bool {.flow.} =
     r2 = true
   result = r1 and r2
 
-proc testPoolNotify(pool: apgPool): bool {.flow.} =
+proc testPoolNotify(pool: ApgPool): bool {.flow.} =
   var r1 = false
   var r2 = false
   pool.listenNotify("testChannel")

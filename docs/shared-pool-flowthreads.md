@@ -1,4 +1,4 @@
-# Why `apgSharedPool` requires `-d:flowThreads`
+# Why `ApgSharedPool` requires `-d:flowThreads`
 
 `asyncpg_stagelane/apg_shared_pool.nim` only compiles with
 `--threads:on --mm:atomicArc -d:flowThreads`. This note explains why.
@@ -60,4 +60,4 @@ matches how stagelane guards `stagelane/exec` (`exec.nim:10`).
 
 libpq itself has no connection to the flag. libpq's thread-safety is checked
 separately, at runtime, by `pqisthreadsafe()` in `newSharedPool`. The plain
-`apgPool` doesn't need the flag, because it never leaves its thread.
+`ApgPool` doesn't need the flag, because it never leaves its thread.
